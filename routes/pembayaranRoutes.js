@@ -655,16 +655,6 @@ router.put("/bayar/:id", async (req, res) => {
     );
     const invoiceId = detailResult.rows[0]?.id;
 
-    await pool.query(
-      `INSERT INTO buku_kas (
-         tanggal, jenis, kategori, keterangan, nominal, petugas, tenant_id
-       )
-       VALUES (
-         CURRENT_DATE, 'Masuk', 'Pembayaran', $1, $2, $3, $4
-       )`,
-      [`${data.nama_tagihan} - ${data.nama}`, nominal, petugas, req.tenantId]
-    );
-
     try {
       await notifyPembayaranDiterima({
         tenantId: req.tenantId,

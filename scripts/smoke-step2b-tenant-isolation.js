@@ -298,20 +298,30 @@ async function run() {
   if (bkPost.body.data?.tenant_id === fx.testTenantId) ok("POST /buku-kas set tenant_id");
   else fail("POST /buku-kas tenant_id", bkPost.body);
 
+  const kasPembayaranBefore = await pool.query(
+    `SELECT COUNT(*)::int AS total
+     FROM buku_kas
+     WHERE tenant_id = $1 AND kategori = 'Pembayaran'`,
+    [fx.testTenantId]
+  );
   const bayarPay = await fetchJson(`/pembayaran/bayar/${fx.payTestId}`, {
     method: "PUT",
     headers: { ...hTest, "Content-Type": "application/json" },
     body: JSON.stringify({ nominal: 5000, petugas: "smoke" }),
   });
-  const bkAfterPay = await pool.query(
-    `SELECT tenant_id, kategori FROM buku_kas
-     WHERE tenant_id = $1 AND kategori = 'Pembayaran'
-     ORDER BY id DESC LIMIT 1`,
+  const kasPembayaranAfter = await pool.query(
+    `SELECT COUNT(*)::int AS total
+     FROM buku_kas
+     WHERE tenant_id = $1 AND kategori = 'Pembayaran'`,
     [fx.testTenantId]
   );
-  if (bayarPay.res.status === 200 && bkAfterPay.rows[0]?.tenant_id === fx.testTenantId) {
-    ok("Bayar pembayaran → buku_kas tenant aware");
-  } else fail("Bayar pembayaran buku_kas", { bayarPay: bayarPay.body, bk: bkAfterPay.rows[0] });
+  if (bayarPay.res.status === 200 && kasPembayaranAfter.rows[0]?.total === kasPembayaranBefore.rows[0]?.total) {
+    ok("Bayar pembayaran tidak menulis buku_kas");
+  } else fail("Pembayaran menulis buku_kas", {
+    bayarPay: bayarPay.body,
+    before: kasPembayaranBefore.rows[0]?.total,
+    after: kasPembayaranAfter.rows[0]?.total,
+  });
 
   const bayarSah = await fetchJson(`/sahriyah/bayar/${fx.tagTestId}`, {
     method: "PUT",
