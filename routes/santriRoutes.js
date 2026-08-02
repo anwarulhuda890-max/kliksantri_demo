@@ -130,7 +130,8 @@ router.get("/", ...withTenant, async (req, res) => {
        LEFT JOIN wali_santri
          ON santri.id = wali_santri.santri_id
         AND wali_santri.tenant_id = santri.tenant_id
-       WHERE santri.tenant_id = $1${scopeSql}
+       WHERE santri.tenant_id = $1
+         AND LOWER(TRIM(COALESCE(santri.status, 'aktif'))) IN ('aktif', 'active', '')${scopeSql}
        ORDER BY santri.id DESC`,
       scopeParams
     );
