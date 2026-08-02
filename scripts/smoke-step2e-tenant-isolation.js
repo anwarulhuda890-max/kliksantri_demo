@@ -418,13 +418,26 @@ async function run() {
   } else fail("GET /kesehatan/stats/hari-ini", kesStats.body);
 
   const testSantriCount = await pool.query(
-    `SELECT COUNT(*)::int AS n FROM santri WHERE tenant_id = $1`,
+    `SELECT COUNT(*)::int AS n
+     FROM santri
+     WHERE tenant_id = $1
+       AND LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')`,
+    [fx.testTenantId]
+  );
+  const testAlumniCount = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM alumni WHERE tenant_id = $1`,
     [fx.testTenantId]
   );
   const dashSantri = Number(dashTest.body.data?.total_santri || 0);
-  if (dashSantri === testSantriCount.rows[0].n) {
-    ok("Dashboard total_santri matches tenant");
-  } else fail("Dashboard total_santri", { dashSantri, db: testSantriCount.rows[0].n });
+  const dashAlumni = Number(dashTest.body.data?.total_alumni || 0);
+  if (dashSantri === testSantriCount.rows[0].n && dashAlumni === testAlumniCount.rows[0].n) {
+    ok("Dashboard santri aktif dan alumni matches tenant");
+  } else fail("Dashboard santri/alumni", {
+    dashSantri,
+    dbSantri: testSantriCount.rows[0].n,
+    dashAlumni,
+    dbAlumni: testAlumniCount.rows[0].n,
+  });
 
   const crossTamuPatch = await fetchJson(`/tamu/${fx.tamuId}/keluar`, {
     method: "PATCH",

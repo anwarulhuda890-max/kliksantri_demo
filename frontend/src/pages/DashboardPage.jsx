@@ -29,6 +29,7 @@ function DashboardPage() {
 
   const [summary, setSummary] = useState({
     total_santri: 0,
+    total_alumni: 0,
     santri_aktif: 0,
     santri_non_aktif: 0,
     total_kelas: 0,

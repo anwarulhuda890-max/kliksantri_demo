@@ -22,7 +22,16 @@ router.get(
 
       const santri =
         await pool.query(
-          `SELECT COUNT(*) AS total FROM santri WHERE tenant_id = $1`,
+          `SELECT COUNT(*) AS total
+           FROM santri
+           WHERE tenant_id = $1
+             AND LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')`,
+          [tenantId]
+        );
+
+      const alumni =
+        await pool.query(
+          `SELECT COUNT(*) AS total FROM alumni WHERE tenant_id = $1`,
           [tenantId]
         );
 
@@ -283,8 +292,12 @@ const persentaseMelanggar =
       try {
         const santriStatus = await pool.query(
           `SELECT
-             COUNT(*) FILTER (WHERE status = 'aktif') AS aktif,
-             COUNT(*) FILTER (WHERE status != 'aktif') AS non_aktif
+             COUNT(*) FILTER (
+               WHERE LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')
+             ) AS aktif,
+             COUNT(*) FILTER (
+               WHERE LOWER(TRIM(COALESCE(status, 'aktif'))) NOT IN ('aktif', 'active', '')
+             ) AS non_aktif
            FROM santri
            WHERE tenant_id = $1`,
           [tenantId]
@@ -521,6 +534,7 @@ await pool.query(
   FROM santri s
   LEFT JOIN current_bills b ON b.santri_id = s.id
   WHERE s.tenant_id = $1
+    AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif', 'active', '')
   `,
   [tenantId, bulanIni, tahunIni]
 );
@@ -739,10 +753,14 @@ const kesehatanStats = await pool.query(`
     FROM kesehatan_santri ks
     INNER JOIN santri s ON s.id = ks.santri_id AND s.tenant_id = ks.tenant_id
     WHERE ks.tenant_id = $1
+      AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif', 'active', '')
     ORDER BY ks.santri_id, ks.created_at DESC
   ),
   santri_aktif AS (
-    SELECT COUNT(*)::int AS total FROM santri WHERE tenant_id = $1
+    SELECT COUNT(*)::int AS total
+    FROM santri
+    WHERE tenant_id = $1
+      AND LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')
   )
   SELECT
     (SELECT total FROM santri_aktif) AS total_santri,
@@ -766,6 +784,9 @@ const kSakit = Number(kStat.sakit || 0);
 
           total_santri:
             Number(santri.rows[0].total),
+
+          total_alumni:
+            Number(alumni.rows[0].total),
 
           santri_aktif:
             santriAktif,

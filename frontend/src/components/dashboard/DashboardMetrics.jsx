@@ -1,4 +1,4 @@
-import { FaExclamationCircle, FaUsers, FaWallet } from "react-icons/fa";
+import { FaExclamationCircle, FaUserGraduate, FaUsers, FaWallet } from "react-icons/fa";
 import KpiCard from "../ui/KpiCard";
 import KpiGrid from "../ui/KpiGrid";
 import { formatCurrency, formatNumber } from "../../utils/formatCurrency";
@@ -140,6 +140,14 @@ function DashboardMetrics({ summary }) {
             label="Total Santri"
             value={formatNumber(summary.total_santri)}
             accent="primary"
+          />
+        </div>
+        <div className="dashboard-kpi-wrap dashboard-kpi-wrap--alumni">
+          <KpiCard
+            icon={<MetricIcon tone="blue"><FaUserGraduate /></MetricIcon>}
+            label="Total Alumni"
+            value={formatNumber(summary.total_alumni || 0)}
+            accent="info"
           />
         </div>
         <div className="dashboard-kpi-wrap dashboard-kpi-wrap--kembali">
