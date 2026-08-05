@@ -21,6 +21,7 @@ const plannedFiles = [
   "064_multi_unit_foundation.sql", "065_reconcile_core_constraints.sql",
   "066_reconcile_missing_operational_schema.sql", "067_reconcile_academic_schema.sql",
   "068_reconcile_active_permissions.sql", "069_reconcile_wali_phone_canonical.sql",
+  "070_admin_token_version.sql",
 ];
 const planned = applyMigrationPolicy(plannedFiles.map((filename) => ({ filename, state: "pending" })), policy);
 assert.strictEqual(planned.find((item) => item.filename.startsWith("001_")).state, "superseded");
@@ -37,9 +38,10 @@ assert.deepStrictEqual(executable, [
   "068_reconcile_active_permissions.sql",
   "069_reconcile_wali_phone_canonical.sql",
   "064_multi_unit_foundation.sql",
+  "070_admin_token_version.sql",
 ]);
 
-for (const filename of executable.filter((name) => name.startsWith("06") && name !== "064_multi_unit_foundation.sql")) {
+for (const filename of executable.filter((name) => /^0(?:6[5-9]|70)_/.test(name))) {
   const sql = fs.readFileSync(path.join(ROOT, "migrations", filename), "utf8");
   const withoutComments = sql.replace(/--[^\r\n]*/g, "");
   assert.match(sql, /^--[\s\S]*\bBEGIN\s*;/i, `${filename} must be transactional`);

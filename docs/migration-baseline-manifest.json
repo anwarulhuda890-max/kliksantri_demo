@@ -578,6 +578,15 @@
       "notes": "forward migration; execute by manifest order",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 140
+    },
+    {
+      "filename": "070_admin_token_version.sql",
+      "checksum": "b58ef912de6d587f1a706ab781b06d66cb32ea144afa76872d9da6d5d8ee5ca4",
+      "status": "NOT_APPLIED",
+      "evidence": "users.token_version and invalidation triggers are not present",
+      "notes": "additive session invalidation; apply before deploying token-version-aware backend",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 160
     }
   ]
 }
