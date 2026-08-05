@@ -85,5 +85,5 @@ export const ROUTE_FEATURES = {
   "/rfid-refund":       "rfid",
   "/users":             "sistem",
   "/roles":             "sistem",
-  "/units":             "sistem",
+  "/units":             null,
 };

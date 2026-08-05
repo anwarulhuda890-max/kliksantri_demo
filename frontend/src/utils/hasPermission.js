@@ -12,6 +12,10 @@ export function getPermissions() {
 
 export function hasPermission(key) {
   if (!key) return true;
+  // Tenant superadmin is the all-access administrator. Backend permission
+  // middleware remains authoritative; this prevents a stale cached permission
+  // list from hiding newly introduced workspace controls after deployment.
+  if (getUser()?.role === "superadmin") return true;
   return getPermissions().includes(key);
 }
 

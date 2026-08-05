@@ -18,9 +18,12 @@ assert.match(app, /import UnitPendidikanPage from "\.\/pages\/UnitPendidikanPage
 assert.match(app, /path="\/units" element=\{<ProtectedRoute><UnitPendidikanPage \/><\/ProtectedRoute>\}/);
 assert.match(app, /<ActiveUnitProvider>[\s\S]*<Routes>[\s\S]*<\/Routes>[\s\S]*<\/ActiveUnitProvider>/);
 
-assert.match(sidebar, /name: "Unit Pendidikan", path: "\/units", perm: "unit\.view"/);
+assert.match(sidebar, /name: "Unit Pendidikan", path: "\/units", perm: "unit\.view", feature: null/);
 assert.match(permissions, /"\/units":\s+"unit\.view"/);
-assert.match(permissions, /"\/units":\s+"sistem"/);
+assert.match(permissions, /"\/units":\s+null/);
+
+const permissionHelper = read("src/utils/hasPermission.js");
+assert.match(permissionHelper, /getUser\(\)\?\.role === "superadmin"/);
 
 assert.match(appShell, /import UnitWorkspaceSelector/);
 assert.match(appShell, /showUnitFoundation \? <UnitWorkspaceSelector \/> : null/);
@@ -30,8 +33,9 @@ assert.match(activeUnitContext, /response\.data\?\.access\?\.all_units === true/
 assert.match(activeUnitContext, /if \(allowAll && \(!stored \|\| stored === "all"\)\)/);
 assert.match(activeUnitContext, /else if \(nextUnits\.length === 1\)/);
 
-assert.match(selector, /!allUnitsAllowed && units\.length <= 1/);
+assert.match(selector, /if \(!allUnitsAllowed && units\.length <= 1\) return null/);
 assert.match(selector, /allUnitsAllowed \? <option value="all">Semua Unit<\/option> : null/);
+assert.match(selector, /if \(error\) return <div/);
 assert.match(unitPage, /<AppShell title="Unit Pendidikan"/);
 
-console.log("PASS frontend multi-unit wiring: 14 assertions");
+console.log("PASS frontend multi-unit wiring: 16 assertions");

@@ -12,6 +12,7 @@ export function ActiveUnitProvider({ children }) {
   const [allUnitsAllowed, setAllUnitsAllowed] = useState(false);
   const [activeUnitId, setActiveUnitIdState] = useState(null);
   const [loading, setLoading] = useState(Boolean(localStorage.getItem("token")));
+  const [error, setError] = useState("");
 
   const refreshUnits = useCallback(async () => {
     if (!localStorage.getItem("token")) {
@@ -19,6 +20,7 @@ export function ActiveUnitProvider({ children }) {
       return;
     }
     try {
+      setError("");
       const response = await api.get("/units");
       const nextUnits = response.data?.data || [];
       const allowAll = response.data?.access?.all_units === true;
@@ -29,8 +31,10 @@ export function ActiveUnitProvider({ children }) {
       else if (nextUnits.some((unit) => String(unit.id) === String(stored))) setActiveUnitIdState(Number(stored));
       else if (nextUnits.length === 1) setActiveUnitIdState(Number(nextUnits[0].id));
       else setActiveUnitIdState(null);
-    } catch {
+    } catch (requestError) {
       setUnits([]);
+      setAllUnitsAllowed(false);
+      setError(requestError.response?.data?.error || "Ruang kerja unit belum dapat dimuat");
     } finally {
       setLoading(false);
     }
@@ -54,9 +58,10 @@ export function ActiveUnitProvider({ children }) {
     activeUnit: units.find((unit) => Number(unit.id) === Number(activeUnitId)) || null,
     allUnitsAllowed,
     loading,
+    error,
     setActiveUnitId,
     refreshUnits,
-  }), [units, activeUnitId, allUnitsAllowed, loading, setActiveUnitId, refreshUnits]);
+  }), [units, activeUnitId, allUnitsAllowed, loading, error, setActiveUnitId, refreshUnits]);
 
   return <ActiveUnitContext.Provider value={value}>{children}</ActiveUnitContext.Provider>;
 }

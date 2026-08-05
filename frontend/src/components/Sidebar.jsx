@@ -41,7 +41,7 @@ const MENU = [
   { name: "Wali Santri", path: "/wali", perm: "wali.view", feature: "wali", icon: <FaUsers /> },
   { name: "Guru", path: "/guru", perm: "guru.view", feature: "guru", icon: <FaUsers /> },
   { name: "Kelas", path: "/kelas", perm: "kelas.view", feature: "kelas", icon: <FaSchool /> },
-  { name: "Unit Pendidikan", path: "/units", perm: "unit.view", feature: "sistem", icon: <FaSchool /> },
+  { name: "Unit Pendidikan", path: "/units", perm: "unit.view", feature: null, icon: <FaSchool /> },
   { name: "Profil Pesantren", path: "/profil-pesantren", perm: "profil.view", feature: "profil", icon: <FaSchool /> },
   { name: "Pengumuman", path: "/pengumuman", perm: "pengumuman.view", feature: "pengumuman", icon: <FaClipboardList /> },
   { name: "Konten Pesantren", path: "/wali-home-links", perm: "konten_pesantren.view", feature: "pengumuman", icon: <FaClipboardList /> },
