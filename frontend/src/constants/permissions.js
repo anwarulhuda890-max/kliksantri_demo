@@ -43,6 +43,7 @@ export const ROUTE_PERMISSIONS = {
   "/rfid-refund":       "rfid.view",
   "/users":             "user.view",
   "/roles":             "role.manage",
+  "/units":             "unit.view",
 };
 
 // Map: path frontend → tenant feature key
@@ -84,4 +85,5 @@ export const ROUTE_FEATURES = {
   "/rfid-refund":       "rfid",
   "/users":             "sistem",
   "/roles":             "sistem",
+  "/units":             "sistem",
 };

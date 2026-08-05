@@ -9,6 +9,8 @@ const {
   seedTenantFeaturesAllEnabled,
   seedTenantFeaturesFromPackage,
 } = require("./tenantFeatureService");
+const { presetKeyForUnitType } = require("../config/unitFeaturePresets");
+const { applyPresetToUnit } = require("./unitFeatureService");
 
 const RESERVED_SLUGS = new Set([
   "default",
@@ -26,13 +28,14 @@ const RESERVED_SLUGS = new Set([
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 
 const DEFAULT_UNITS = [
-  { kode: "PAUD", nama: "PAUD", sort_order: 1 },
-  { kode: "TK", nama: "TK", sort_order: 2 },
-  { kode: "SD", nama: "SD", sort_order: 3 },
-  { kode: "MI", nama: "MI", sort_order: 4 },
-  { kode: "SMP", nama: "SMP", sort_order: 5 },
-  { kode: "SMA", nama: "SMA", sort_order: 6 },
-  { kode: "MADINAH", nama: "MADINAH", sort_order: 7 },
+  { kode: "PESANTREN", nama: "Pondok Pesantren", sort_order: 1 },
+  { kode: "MADIN", nama: "Madrasah Diniyah", sort_order: 2 },
+  { kode: "PAUD", nama: "PAUD", sort_order: 3 },
+  { kode: "TK", nama: "TK", sort_order: 4 },
+  { kode: "SD", nama: "SD", sort_order: 5 },
+  { kode: "MI", nama: "MI", sort_order: 6 },
+  { kode: "SMP", nama: "SMP", sort_order: 7 },
+  { kode: "SMA", nama: "SMA", sort_order: 8 },
 ];
 
 const DEFAULT_UNIT_USERS = [
@@ -43,7 +46,7 @@ const DEFAULT_UNIT_USERS = [
   { username: "mi", role: "bendahara_unit", unitKode: "MI" },
   { username: "smp", role: "bendahara_unit", unitKode: "SMP" },
   { username: "sma", role: "bendahara_unit", unitKode: "SMA" },
-  { username: "madinah", role: "bendahara_unit", unitKode: "MADINAH" },
+  { username: "madin", role: "bendahara_unit", unitKode: "MADIN" },
 ];
 
 function generateSecurePassword() {
@@ -286,14 +289,21 @@ async function createTenantWithDefaults(rawPayload, platformUser) {
     const unitByKode = {};
 
     for (const unit of DEFAULT_UNITS) {
+      const presetKey = presetKeyForUnitType(unit.kode);
       const ins = await client.query(
-        `INSERT INTO unit_pendidikan (kode, nama, sort_order, is_active, tenant_id)
-         VALUES ($1, $2, $3, true, $4)
+        `INSERT INTO unit_pendidikan
+         (kode, nama, unit_type, preset_key, sort_order, is_active, tenant_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, true, $6, NOW())
          RETURNING id, kode, nama, sort_order, tenant_id`,
-        [unit.kode, unit.nama, unit.sort_order, tenant.id]
+        [unit.kode, unit.nama, unit.kode, presetKey, unit.sort_order, tenant.id]
       );
       units.push(ins.rows[0]);
       unitByKode[unit.kode] = ins.rows[0].id;
+      await applyPresetToUnit(client, {
+        tenantId: tenant.id,
+        unitId: ins.rows[0].id,
+        unitType: unit.kode,
+      });
     }
 
     const adminHash = await bcrypt.hash(admin_password, 10);
@@ -337,10 +347,10 @@ async function createTenantWithDefaults(rawPayload, platformUser) {
 
         if (spec.unitKode && unitByKode[spec.unitKode]) {
           await client.query(
-            `INSERT INTO user_unit_scope (user_id, unit_id)
-             VALUES ($1, $2)
+            `INSERT INTO user_unit_scope (tenant_id, user_id, unit_id, status, updated_at)
+             VALUES ($1, $2, $3, 'active', NOW())
              ON CONFLICT DO NOTHING`,
-            [created.id, unitByKode[spec.unitKode]]
+            [tenant.id, created.id, unitByKode[spec.unitKode]]
           );
           created.unit_kode = spec.unitKode;
         }

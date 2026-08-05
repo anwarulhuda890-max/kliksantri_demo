@@ -3,16 +3,14 @@ import { useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import PageHeader from "../components/PageHeader";
 import TenantModeBanner from "../components/TenantModeBanner";
+import UnitWorkspaceSelector from "../components/UnitWorkspaceSelector";
 
 function AppShell({ children, title, description, breadcrumb }) {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isDashboard = location.pathname === "/dashboard";
   const showBanner = !isDashboard;
-
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [location.pathname]);
+  const showUnitFoundation = isDashboard || location.pathname === "/units";
 
   useEffect(() => {
     if (!drawerOpen) return undefined;
@@ -54,6 +52,8 @@ function AppShell({ children, title, description, breadcrumb }) {
           compact={isDashboard}
           dashboardMode={isDashboard}
         />
+
+        {showUnitFoundation ? <UnitWorkspaceSelector /> : null}
 
         <div className="app-shell-content">{children}</div>
       </main>

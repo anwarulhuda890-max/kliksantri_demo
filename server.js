@@ -97,6 +97,9 @@ const kelasRoutes =
 const dashboardRoutes =
 require("./routes/dashboardRoutes");
 
+const unitRoutes =
+require("./routes/unitRoutes");
+
 const waliRoutes =
 require("./routes/waliRoutes");
 
@@ -411,6 +414,8 @@ app.use(
   requirePermission("dashboard.view"),
   dashboardRoutes
 );
+
+app.use("/units", unitRoutes);
 
 app.use(
   "/wali",

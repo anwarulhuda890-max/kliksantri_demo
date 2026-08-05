@@ -41,6 +41,7 @@ const MENU = [
   { name: "Wali Santri", path: "/wali", perm: "wali.view", feature: "wali", icon: <FaUsers /> },
   { name: "Guru", path: "/guru", perm: "guru.view", feature: "guru", icon: <FaUsers /> },
   { name: "Kelas", path: "/kelas", perm: "kelas.view", feature: "kelas", icon: <FaSchool /> },
+  { name: "Unit Pendidikan", path: "/units", perm: "unit.view", feature: "sistem", icon: <FaSchool /> },
   { name: "Profil Pesantren", path: "/profil-pesantren", perm: "profil.view", feature: "profil", icon: <FaSchool /> },
   { name: "Pengumuman", path: "/pengumuman", perm: "pengumuman.view", feature: "pengumuman", icon: <FaClipboardList /> },
   { name: "Konten Pesantren", path: "/wali-home-links", perm: "konten_pesantren.view", feature: "pengumuman", icon: <FaClipboardList /> },
@@ -127,7 +128,7 @@ const MENU_GROUPS = [
     id: "sistem",
     title: "Sistem",
     collapsible: true,
-    items: ["Users", "Roles", "Audit", "Info dari KlikPesantren", "Tentang KlikPesantren"],
+    items: ["Unit Pendidikan", "Users", "Roles", "Audit", "Info dari KlikPesantren", "Tentang KlikPesantren"],
   },
 ];
 
@@ -292,7 +293,10 @@ function Sidebar({ drawerOpen = false, onDrawerClose }) {
   }, []);
 
   const menus = useMemo(
-    () => MENU.filter((m) => hasAnyPermission(m.perm) && hasFeature(m.feature)),
+    () => {
+      void permissionsVersion;
+      return MENU.filter((m) => hasAnyPermission(m.perm) && hasFeature(m.feature));
+    },
     [permissionsVersion],
   );
 
@@ -337,21 +341,6 @@ function Sidebar({ drawerOpen = false, onDrawerClose }) {
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
     };
   }, [persistScroll]);
-
-  useEffect(() => {
-    const activeGroupId = getActiveGroupId(location.pathname, menuByPath);
-    if (!activeGroupId) return;
-
-    const group = MENU_GROUPS.find((g) => g.id === activeGroupId);
-    if (!group?.collapsible) return;
-
-    setCollapsed((prev) => {
-      if (prev[activeGroupId] !== true) return prev;
-      const next = { ...prev, [activeGroupId]: false };
-      saveCollapsedState(next);
-      return next;
-    });
-  }, [location.pathname, menuByPath]);
 
   const logout = () => {
     localStorage.removeItem("token");

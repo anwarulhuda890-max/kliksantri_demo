@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const authMiddleware = require("../middleware/authMiddleware");
 const tenantMiddleware = require("../middleware/tenantMiddleware");
 const requirePermission = require("../middleware/requirePermission");
+const { getAllowedUnitIds } = require("../services/unitAccessService");
 
 const withTenant = [authMiddleware, tenantMiddleware];
 const {
@@ -79,13 +80,21 @@ router.get(
   ]),
   async (req, res) => {
     try {
+      const allowed = await getAllowedUnitIds(req.user, req.tenantId);
+      const params = [req.tenantId];
+      let scopeSql = "";
+      if (allowed !== null) {
+        params.push(allowed);
+        scopeSql = " AND id = ANY($2::int[])";
+      }
       const result = await pool.query(
         `SELECT id, kode, nama, is_active, sort_order
          FROM unit_pendidikan
          WHERE tenant_id = $1
            AND is_active = true
+           ${scopeSql}
          ORDER BY sort_order ASC, id ASC`,
-        [req.tenantId]
+        params
       );
 
       res.json({ success: true, data: result.rows });
@@ -312,6 +321,8 @@ router.get(
          FROM user_unit_scope s
          INNER JOIN unit_pendidikan u ON u.id = s.unit_id AND u.tenant_id = $2
          WHERE s.user_id = $1
+           AND s.tenant_id = $2
+           AND s.status = 'active'
          ORDER BY u.sort_order ASC, u.id ASC`,
         [id, req.tenantId]
       );
@@ -357,7 +368,8 @@ router.put(
           `SELECT id
            FROM unit_pendidikan
            WHERE tenant_id = $1
-             AND id = ANY($2::int[])`,
+             AND id = ANY($2::int[])
+             AND is_active = true`,
           [req.tenantId, unitIds]
         );
 
@@ -370,14 +382,17 @@ router.put(
       }
 
       await client.query("BEGIN");
-      await client.query("DELETE FROM user_unit_scope WHERE user_id = $1", [id]);
+      await client.query(
+        "DELETE FROM user_unit_scope WHERE user_id = $1 AND tenant_id = $2",
+        [id, req.tenantId],
+      );
 
       for (const unitId of unitIds) {
         await client.query(
-          `INSERT INTO user_unit_scope (user_id, unit_id)
-           VALUES ($1, $2)
+          `INSERT INTO user_unit_scope (tenant_id, user_id, unit_id, status, updated_at)
+           VALUES ($1, $2, $3, 'active', NOW())
            ON CONFLICT DO NOTHING`,
-          [id, unitId]
+          [req.tenantId, id, unitId]
         );
       }
 

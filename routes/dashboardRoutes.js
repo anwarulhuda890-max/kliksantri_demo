@@ -1,6 +1,7 @@
 const express = require("express");
 
 const pool = require("../db");
+const { resolveActiveUnit } = require("../services/unitAccessService");
 
 const router = express.Router();
 
@@ -17,6 +18,21 @@ router.get(
     try {
 
       const tenantId = req.tenantId;
+      const unitAccess = await resolveActiveUnit(req);
+      if (unitAccess.mode === "UNIT") {
+        return res.status(409).json({
+          success: false,
+          error: "Dashboard unit belum tersedia sampai snapshot unit modul selesai",
+          code: "DASHBOARD_UNIT_SNAPSHOT_PENDING",
+          meta: {
+            scope: "unit",
+            unit_id: unitAccess.unitId,
+            unit_name: unitAccess.unit?.nama || null,
+            generated_at: new Date().toISOString(),
+            data_quality: "partial_legacy",
+          },
+        });
+      }
       const bulanIni = new Date().getMonth() + 1;
       const tahunIni = new Date().getFullYear();
 
@@ -779,6 +795,14 @@ const kSakit = Number(kStat.sakit || 0);
       res.json({
 
         success: true,
+
+        meta: {
+          scope: "all",
+          unit_id: null,
+          unit_name: null,
+          generated_at: new Date().toISOString(),
+          data_quality: "tenant_aggregate_legacy",
+        },
 
         data: {
 

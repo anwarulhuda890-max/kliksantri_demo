@@ -1,5 +1,6 @@
 const pool = require("../db");
 const requirePermission = require("./requirePermission");
+const { getAllowedUnitIds } = require("../services/unitAccessService");
 
 async function resolveKelasScopeAccess(req) {
   const role = req.user?.role;
@@ -12,15 +13,6 @@ async function resolveKelasScopeAccess(req) {
 
   if (!tenantId) {
     return { denied: true, status: 403, error: "Tenant context tidak tersedia" };
-  }
-
-  if (role === "superadmin") {
-    return {
-      mode: "ALL",
-      kelasIds: null,
-      canManage: true,
-      tenantId,
-    };
   }
 
   const perms = await requirePermission.getPermissionList(role, {
@@ -36,14 +28,25 @@ async function resolveKelasScopeAccess(req) {
     return { denied: true, status: 403, error: "Akses ditolak" };
   }
 
+  const unitIds = await getAllowedUnitIds(req.user, tenantId);
+  if (unitIds === null) {
+    return {
+      mode: "ALL",
+      kelasIds: null,
+      canManage,
+      tenantId,
+    };
+  }
+
   const { rows } = await pool.query(
     `SELECT s.kelas_id
      FROM user_kelas_scope s
      INNER JOIN users usr ON usr.id = s.user_id AND usr.tenant_id = $2
      INNER JOIN kelas k ON k.id = s.kelas_id AND k.tenant_id = $2
      WHERE s.user_id = $1
-       AND s.tenant_id = $2`,
-    [userId, tenantId]
+       AND s.tenant_id = $2
+       AND k.unit_id = ANY($3::int[])`,
+    [userId, tenantId, unitIds]
   );
 
   if (rows.length > 0) {
@@ -55,15 +58,13 @@ async function resolveKelasScopeAccess(req) {
     };
   }
 
-  // Unit-scoped operators inherit access to every class in their assigned units.
-  const unitRows = await pool.query(
-    `SELECT DISTINCT k.id AS kelas_id
-     FROM user_unit_scope s
-     INNER JOIN users usr ON usr.id = s.user_id AND usr.tenant_id = $2
-     INNER JOIN kelas k ON k.unit_id = s.unit_id AND k.tenant_id = $2
-     WHERE s.user_id = $1`,
-    [userId, tenantId],
-  );
+  const unitRows = unitIds.length
+    ? await pool.query(
+      `SELECT DISTINCT id AS kelas_id FROM kelas
+       WHERE tenant_id = $1 AND unit_id = ANY($2::int[])`,
+      [tenantId, unitIds],
+    )
+    : { rows: [] };
   if (unitRows.rows.length === 0) {
     return { denied: true, status: 403, error: "Unit atau kelas scope belum diassign" };
   }

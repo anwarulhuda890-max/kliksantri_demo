@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { TenantProfileProvider } from "./context/TenantProfileContext";
+import { ActiveUnitProvider } from "./context/ActiveUnitContext";
 
 import LoginPage from "./pages/LoginPage";
 import TenantPortalErrorPage from "./pages/TenantPortalErrorPage";
@@ -49,6 +50,7 @@ import TamuPage from "./pages/TamuPage";
 import ProfilPesantrenPage from "./pages/ProfilPesantrenPage";
 import UsersPage from "./pages/UsersPage";
 import RolesPage from "./pages/RolesPage";
+import UnitPendidikanPage from "./pages/UnitPendidikanPage";
 
 import PlatformLoginPage from "./pages/platform/PlatformLoginPage";
 import PlatformProtectedRoute from "./components/platform/PlatformProtectedRoute";
@@ -183,6 +185,7 @@ function App() {
   return (
     <BrowserRouter>
       <TenantProfileProvider>
+      <ActiveUnitProvider>
       <Routes>
         <Route path="/" element={<RootRoute />} />
         <Route path="/landing" element={<Navigate to="/founding-partner" replace />} />
@@ -291,6 +294,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        <Route path="/units" element={<ProtectedRoute><UnitPendidikanPage /></ProtectedRoute>} />
 
         <Route
           path="/wali"
@@ -640,6 +645,7 @@ function App() {
           }
         />
       </Routes>
+      </ActiveUnitProvider>
       </TenantProfileProvider>
       </BrowserRouter>
   );

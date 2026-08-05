@@ -1,25 +1,21 @@
 const pool = require("../db");
+const { getAllowedUnitIds } = require("../services/unitAccessService");
 
-// Legacy users without a unit assignment keep tenant-wide access for compatibility.
 async function getScopedKelasIds(req, client = pool) {
-  if (req.user?.role === "superadmin" || !req.user?.id || !req.tenantId) return null;
+  const unitIds = await getAllowedUnitIds(req.user, req.tenantId, client);
+  if (unitIds === null) return null;
+  if (unitIds.length === 0) return [];
   const result = await client.query(
     `SELECT DISTINCT k.id AS kelas_id
-     FROM user_unit_scope us
-     INNER JOIN kelas k ON k.unit_id = us.unit_id AND k.tenant_id = $2
-     WHERE us.user_id = $1`,
-    [req.user.id, req.tenantId],
+     FROM kelas k
+     WHERE k.tenant_id = $1 AND k.unit_id = ANY($2::int[])`,
+    [req.tenantId, unitIds],
   );
-  return result.rows.length ? result.rows.map((row) => row.kelas_id) : null;
+  return result.rows.map((row) => Number(row.kelas_id));
 }
 
 async function getScopedUnitIds(req, client = pool) {
-  if (req.user?.role === "superadmin" || !req.user?.id || !req.tenantId) return null;
-  const result = await client.query(
-    `SELECT unit_id FROM user_unit_scope WHERE user_id = $1`,
-    [req.user.id],
-  );
-  return result.rows.length ? result.rows.map((row) => row.unit_id) : null;
+  return getAllowedUnitIds(req.user, req.tenantId, client);
 }
 
 async function assertSantriInScopedUnit(req, santriId, client = pool) {

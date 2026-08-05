@@ -1,5 +1,6 @@
 const pool = require("../db");
 const requirePermission = require("./requirePermission");
+const { getAllowedUnitIds } = require("../services/unitAccessService");
 
 /**
  * Resolve program unit access for authenticated user within active tenant.
@@ -37,34 +38,17 @@ async function resolveProgramUnitAccess(req) {
     };
   }
 
-  if (role === "superadmin") {
+  const unitIds = await getAllowedUnitIds(req.user, tenantId);
+  if (unitIds === null) {
     return {
       mode: "ALL",
       unitIds: null,
-      canManage: true,
+      canManage: role === "superadmin" || canManage,
       tenantId,
     };
   }
 
-  if (role === "pimpinan_yayasan") {
-    return {
-      mode: "ALL",
-      unitIds: null,
-      canManage: false,
-      tenantId,
-    };
-  }
-
-  const { rows } = await pool.query(
-    `SELECT s.unit_id
-     FROM user_unit_scope s
-     INNER JOIN users usr ON usr.id = s.user_id AND usr.tenant_id = $2
-     INNER JOIN unit_pendidikan u ON u.id = s.unit_id AND u.tenant_id = $2
-     WHERE s.user_id = $1`,
-    [userId, tenantId]
-  );
-
-  if (rows.length === 0) {
+  if (unitIds.length === 0) {
     return {
       denied: true,
       status: 403,
@@ -74,7 +58,7 @@ async function resolveProgramUnitAccess(req) {
 
   return {
     mode: "SCOPED",
-    unitIds: rows.map((r) => r.unit_id),
+    unitIds,
     canManage: canManage,
     tenantId,
   };

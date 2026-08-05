@@ -1,5 +1,6 @@
 const pool = require("../db");
 const requirePermission = require("./requirePermission");
+const { getAllowedUnitIds } = require("../services/unitAccessService");
 
 /**
  * Resolve unit access for the authenticated user within active tenant.
@@ -25,24 +26,6 @@ async function resolveUnitAccess(req) {
     };
   }
 
-  if (role === "superadmin") {
-    return {
-      mode: "ALL",
-      unitIds: null,
-      canManage: true,
-      tenantId,
-    };
-  }
-
-  if (role === "pimpinan_yayasan") {
-    return {
-      mode: "ALL",
-      unitIds: null,
-      canManage: false,
-      tenantId,
-    };
-  }
-
   const perms = await requirePermission.getPermissionList(role, {
     tenantScoped: true,
   });
@@ -57,16 +40,17 @@ async function resolveUnitAccess(req) {
     };
   }
 
-  const { rows } = await pool.query(
-    `SELECT s.unit_id
-     FROM user_unit_scope s
-     INNER JOIN users usr ON usr.id = s.user_id AND usr.tenant_id = $2
-     INNER JOIN unit_pendidikan u ON u.id = s.unit_id AND u.tenant_id = $2
-     WHERE s.user_id = $1`,
-    [userId, tenantId]
-  );
+  const unitIds = await getAllowedUnitIds(req.user, tenantId);
+  if (unitIds === null) {
+    return {
+      mode: "ALL",
+      unitIds: null,
+      canManage,
+      tenantId,
+    };
+  }
 
-  if (rows.length === 0) {
+  if (unitIds.length === 0) {
     return {
       denied: true,
       status: 403,
@@ -76,7 +60,7 @@ async function resolveUnitAccess(req) {
 
   return {
     mode: "SCOPED",
-    unitIds: rows.map((r) => r.unit_id),
+    unitIds,
     canManage,
     tenantId,
   };
