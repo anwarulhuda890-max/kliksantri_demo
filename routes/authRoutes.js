@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const pool = require("../db");
 const requirePermission = require("../middleware/requirePermission");
 const bcrypt = require("bcryptjs");
+const authMiddleware = require("../middleware/authMiddleware");
 const { resolveTenantForLogin, getTenantById, buildInactiveTenantPayload } = require("../services/tenantService");
 const { getEnabledFeatureKeys } = require("../services/tenantFeatureService");
 const { JWT_SECRET } = require("../config/authSecrets");
@@ -19,6 +20,7 @@ function buildJwtPayload(user, tenant) {
     role: user.role,
     tenant_id: tenant.id,
     tenant_slug: tenant.slug,
+    token_version: Number(user.token_version) || 0,
   };
 }
 
@@ -126,21 +128,8 @@ router.post("/login", async (req, res) => {
 // VERIFY TOKEN
 // =====================
 
-router.get("/me", async (req, res) => {
+router.get("/me", authMiddleware, async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      return res.status(401).json({
-        success: false,
-        error: "Token tidak ada",
-      });
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    const decoded = jwt.verify(token, JWT_SECRET);
-
     const result = await pool.query(
       `
       SELECT
@@ -155,7 +144,7 @@ router.get("/me", async (req, res) => {
       LEFT JOIN tenants t ON t.id = u.tenant_id
       WHERE u.id = $1
       `,
-      [decoded.id]
+      [req.user.id]
     );
 
     if (result.rows.length === 0) {
@@ -166,13 +155,6 @@ router.get("/me", async (req, res) => {
     }
 
     const me = result.rows[0];
-
-    if (me.tenant_id && decoded.tenant_id && me.tenant_id !== decoded.tenant_id) {
-      return res.status(401).json({
-        success: false,
-        error: "Token tenant tidak valid",
-      });
-    }
 
     if (me.tenant_id) {
       const tenant = await getTenantById(me.tenant_id);

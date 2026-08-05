@@ -191,6 +191,24 @@ router.put("/:id/permissions", async (req, res) => {
       [permissionKeys]
     );
 
+    const current = await client.query(
+      `SELECT permission_id
+       FROM role_permissions
+       WHERE role_id = $1
+       ORDER BY permission_id`,
+      [id],
+    );
+    const currentIds = current.rows.map((item) => Number(item.permission_id));
+    const requestedIds = perms.rows.map((item) => Number(item.id)).sort((a, b) => a - b);
+    const permissionsChanged =
+      currentIds.length !== requestedIds.length ||
+      currentIds.some((permissionId, index) => permissionId !== requestedIds[index]);
+
+    if (!permissionsChanged) {
+      await client.query("COMMIT");
+      return res.json({ success: true, updated_count: perms.rows.length });
+    }
+
     await client.query("DELETE FROM role_permissions WHERE role_id = $1", [id]);
 
     for (const perm of perms.rows) {

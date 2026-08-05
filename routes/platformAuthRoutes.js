@@ -18,6 +18,7 @@ function buildPlatformJwtPayload(user) {
     role: "platform_superadmin",
     tenant_id: null,
     platform: true,
+    token_version: Number(user.token_version) || 0,
   };
 }
 

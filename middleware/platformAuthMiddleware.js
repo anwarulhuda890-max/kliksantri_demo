@@ -3,6 +3,11 @@ require("dotenv").config();
 const jwt = require("jsonwebtoken");
 const pool = require("../db");
 const { JWT_SECRET } = require("../config/authSecrets");
+const {
+  SESSION_EXPIRED_CODE,
+  sendSessionExpired,
+  validateDecodedAdminSession,
+} = require("../services/adminSessionService");
 
 /**
  * Authenticate platform superadmin JWT (tenant_id must be null).
@@ -52,30 +57,7 @@ async function platformAuthMiddleware(req, res, next) {
       });
     }
 
-    const { rows } = await pool.query(
-      `SELECT id, nama, username, role, status, tenant_id
-       FROM users
-       WHERE id = $1
-         AND tenant_id IS NULL
-         AND role = 'platform_superadmin'`,
-      [decoded.id]
-    );
-
-    if (rows.length === 0) {
-      return res.status(401).json({
-        success: false,
-        error: "User platform tidak ditemukan",
-      });
-    }
-
-    const user = rows[0];
-
-    if (user.status && user.status !== "Aktif") {
-      return res.status(403).json({
-        success: false,
-        error: "Akun platform tidak aktif",
-      });
-    }
+    const user = await validateDecodedAdminSession(decoded, pool);
 
     req.platformUser = {
       id: user.id,
@@ -84,12 +66,16 @@ async function platformAuthMiddleware(req, res, next) {
       role: user.role,
       tenant_id: null,
       platform: true,
+      token_version: user.token_version,
     };
 
     req.user = req.platformUser;
 
     next();
   } catch (err) {
+    if (err?.code === SESSION_EXPIRED_CODE) {
+      return sendSessionExpired(res);
+    }
     console.error("[platformAuthMiddleware]", err);
     return res.status(500).json({
       success: false,

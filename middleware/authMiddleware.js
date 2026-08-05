@@ -2,9 +2,17 @@ require("dotenv").config();
 
 const jwt = require("jsonwebtoken");
 const { JWT_SECRET } = require("../config/authSecrets");
+const {
+  SESSION_EXPIRED_CODE,
+  sendSessionExpired,
+  validateDecodedAdminSession,
+} = require("../services/adminSessionService");
 
-const authMiddleware = (req, res, next) => {
-  try {
+function createAuthMiddleware({
+  verifyToken = (token) => jwt.verify(token, JWT_SECRET),
+  validateSession = validateDecodedAdminSession,
+} = {}) {
+  return async (req, res, next) => {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
@@ -15,19 +23,46 @@ const authMiddleware = (req, res, next) => {
     }
 
     const token = authHeader.split(" ")[1];
+    let decoded;
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    try {
+      decoded = verifyToken(token);
+    } catch {
+      return res.status(401).json({
+        success: false,
+        error: "Token tidak valid",
+      });
+    }
 
-    req.user = decoded;
-    req.tenantId = decoded.tenant_id ?? null;
+    try {
+      const currentUser = await validateSession(decoded);
 
-    next();
-  } catch (err) {
-    return res.status(401).json({
-      success: false,
-      error: "Token tidak valid",
-    });
-  }
-};
+      req.user = {
+        ...decoded,
+        ...currentUser,
+      };
+      req.tenantId = currentUser.tenant_id ?? null;
+
+      next();
+    } catch (err) {
+      if (err?.code === SESSION_EXPIRED_CODE) {
+        return sendSessionExpired(res);
+      }
+      console.error("[authMiddleware] session validation failed", {
+        name: err?.name,
+        code: err?.code,
+        message: err?.message,
+        stack: err?.stack,
+      });
+      return res.status(500).json({
+        success: false,
+        error: "Gagal memverifikasi sesi",
+      });
+    }
+  };
+}
+
+const authMiddleware = createAuthMiddleware();
+authMiddleware.createAuthMiddleware = createAuthMiddleware;
 
 module.exports = authMiddleware;

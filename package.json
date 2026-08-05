@@ -14,6 +14,8 @@
     "migration:064:preflight": "node scripts/preflight-migration-064.js",
     "migration:reconciliation:preflight": "node scripts/preflight-migration-reconciliation.js",
     "test:multi-unit": "node scripts/test-multi-unit-foundation.js",
+    "test:admin-session-versioning": "node scripts/test-admin-session-versioning.js",
+    "test:admin-session-migration-db": "node scripts/test-admin-session-migration-db.js",
     "test:migration-reconciliation": "node scripts/test-migration-reconciliation.js",
     "wali-identity:plan": "node scripts/plan-wali-identity-resolution.js",
     "wali-identity:apply": "node scripts/apply-wali-identity-resolution.js",
