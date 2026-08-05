@@ -1,0 +1,51 @@
+const assert = require("assert");
+const fs = require("fs");
+const path = require("path");
+const { applyMigrationPolicy, loadMigrationPolicy } = require("../utils/migrationLedger");
+
+const ROOT = path.join(__dirname, "..");
+const policy = loadMigrationPolicy();
+
+function recommendation(filename) {
+  const rule = policy.get(filename) || {};
+  return rule.recommendation || rule.recommended_action;
+}
+
+assert.strictEqual(recommendation("003_demo_data_fix.sql"), "SUPERSEDED");
+assert.strictEqual(recommendation("008_absensi_unique.sql"), "SUPERSEDED");
+assert.strictEqual(recommendation("050_user_kelas_scope.sql"), "APPLY_RECONCILIATION");
+assert.strictEqual(recommendation("063_rbac_module_permissions.sql"), "BASELINE_AS_APPLIED");
+
+const plannedFiles = [
+  "001_wali_app.sql", "006_normalize_phone_08.sql", "050_user_kelas_scope.sql",
+  "064_multi_unit_foundation.sql", "065_reconcile_core_constraints.sql",
+  "066_reconcile_missing_operational_schema.sql", "067_reconcile_academic_schema.sql",
+  "068_reconcile_active_permissions.sql", "069_reconcile_wali_phone_canonical.sql",
+];
+const planned = applyMigrationPolicy(plannedFiles.map((filename) => ({ filename, state: "pending" })), policy);
+assert.strictEqual(planned.find((item) => item.filename.startsWith("001_")).state, "superseded");
+assert.strictEqual(planned.find((item) => item.filename.startsWith("006_")).state, "replaced");
+assert.strictEqual(planned.find((item) => item.filename.startsWith("050_")).state, "replaced");
+
+const executable = planned.filter((item) => item.state === "pending")
+  .sort((a, b) => a.execution_order - b.execution_order)
+  .map((item) => item.filename);
+assert.deepStrictEqual(executable, [
+  "065_reconcile_core_constraints.sql",
+  "066_reconcile_missing_operational_schema.sql",
+  "067_reconcile_academic_schema.sql",
+  "068_reconcile_active_permissions.sql",
+  "069_reconcile_wali_phone_canonical.sql",
+  "064_multi_unit_foundation.sql",
+]);
+
+for (const filename of executable.filter((name) => name.startsWith("06") && name !== "064_multi_unit_foundation.sql")) {
+  const sql = fs.readFileSync(path.join(ROOT, "migrations", filename), "utf8");
+  const withoutComments = sql.replace(/--[^\r\n]*/g, "");
+  assert.match(sql, /^--[\s\S]*\bBEGIN\s*;/i, `${filename} must be transactional`);
+  assert.match(sql, /COMMIT\s*;\s*$/i, `${filename} must commit explicitly`);
+  assert.doesNotMatch(withoutComments, /\bDELETE\s+FROM\b/i, `${filename} must not delete rows`);
+  assert.doesNotMatch(withoutComments, /\bDROP\s+(?:TABLE|COLUMN)\b/i, `${filename} must not drop data structures`);
+}
+
+console.log("PASS migration reconciliation policy: 12 assertions");

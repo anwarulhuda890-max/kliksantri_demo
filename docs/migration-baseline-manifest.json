@@ -1,0 +1,583 @@
+{
+  "manifest_version": 2,
+  "generated_at": "2026-08-05",
+  "audit_mode": "READ_ONLY",
+  "migrations": [
+    {
+      "filename": "001_wali_app.sql",
+      "checksum": "5e26571a672340c8b40da8e06e309fe51b74ce128791145c54d6fa261f31ce7d",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "49/50 found; 1 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "002_wali_app_seed_dev.sql",
+      "checksum": "d9f213c572289d44df196f76be8be483a557fa570c4d5d0b9c2355fe7426290f",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "003_demo_data_fix.sql",
+      "checksum": "2b49f147af11fd2debbe5c29fa0c2fdf4f7f27c5d7fd0866ca2db7a303bb7eb7",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "004_pengumuman_seed.sql",
+      "checksum": "d6aea589752eeecb676ba0a00a42633c5dd6c2631acd5b69e118d705cb68a145",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "005_profil_pesantren_seed.sql",
+      "checksum": "9168e2f3f236078ffd300ffc1b3c7b2a0b5052344d539dcb0489fd49acb3efc0",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "006_normalize_phone_08.sql",
+      "checksum": "88289cff71923b2d231f7392c9cba68bbb36d094ed5efd7b03e9364b5002844e",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "replaced by 069_reconcile_wali_phone_canonical.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "069_reconcile_wali_phone_canonical.sql"
+    },
+    {
+      "filename": "007_sync_wali_akun.sql",
+      "checksum": "f3da73b0fa6af2c3d6d5fc593c7c8293d8e294b4e78300acaf602219fcbf815e",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "008_absensi_unique.sql",
+      "checksum": "67b6a5768d4fe6497dfd33ef538b0b5b5188c4d779ec4e42078b63fa6bd23193",
+      "status": "NOT_APPLIED",
+      "evidence": "0/1 found; 1 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "009_guru.sql",
+      "checksum": "d9b1532ce89630fb570ee4c1527421594c1f25161411323c03255893acbae671",
+      "status": "DRIFTED",
+      "evidence": "16/17 found; 1 missing; 4 drift",
+      "notes": "replaced by 065_reconcile_core_constraints.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "065_reconcile_core_constraints.sql"
+    },
+    {
+      "filename": "010_guru_extend.sql",
+      "checksum": "e182ae1491f1029d347d3254b19bab1e9877677295edc04e1b2a57d9782f09ab",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "5/6 found; 1 missing; 0 drift",
+      "notes": "replaced by 065_reconcile_core_constraints.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "065_reconcile_core_constraints.sql"
+    },
+    {
+      "filename": "011_guru_columns.sql",
+      "checksum": "502b5ed90c91a328dfa5c1cbc95ae18e9618251a59a9b85419e8a432dabe72c2",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "2/3 found; 1 missing; 0 drift",
+      "notes": "replaced by 065_reconcile_core_constraints.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "065_reconcile_core_constraints.sql"
+    },
+    {
+      "filename": "012_guru_final.sql",
+      "checksum": "69392080f78a79d8bc2e2df55f5711d0b4b29b25997e6ad05a9110ded9fa06a5",
+      "status": "DRIFTED",
+      "evidence": "23/25 found; 2 missing; 4 drift",
+      "notes": "replaced by 065_reconcile_core_constraints.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "065_reconcile_core_constraints.sql"
+    },
+    {
+      "filename": "013_absensi_guru_refactor.sql",
+      "checksum": "350544e81ab8f92f84b87612b45e55fc3374816fc6b6955df481201383dd28dd",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "1/3 found; 2 missing; 0 drift",
+      "notes": "replaced by 065_reconcile_core_constraints.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "065_reconcile_core_constraints.sql"
+    },
+    {
+      "filename": "014_wali_sync_backfill.sql",
+      "checksum": "7c7fccfde506d6cfb93fbb3fbc2087871e96aaecff01f76068a86ec1db9624ba",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "015_rbac.sql",
+      "checksum": "35a3a4bcd82b0900d4650f0f2232a5198c88f8528ed2d916ec5716bc7e3397d9",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "22/22 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "016_users_extend.sql",
+      "checksum": "3ac67ce384322ce37c419731e40dc2b721133995335fc5c7bf883550ff360260",
+      "status": "DRIFTED",
+      "evidence": "2/2 found; 0 missing; 1 drift",
+      "notes": "replaced by 065_reconcile_core_constraints.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "065_reconcile_core_constraints.sql"
+    },
+    {
+      "filename": "017_pengumuman_cover.sql",
+      "checksum": "b79e5aaaa45bb087d5f35b47ad01bd3ffed4457fc48e0ba3f33f0171e7463058",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "1/1 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "018_profil_pesantren_banner.sql",
+      "checksum": "02985a71112e90c581a4b8e01085cfc8e0c4dd32f09803a71c731e381b8690f3",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "019_profil_pesantren_white_label.sql",
+      "checksum": "e359e0aa2abf6ec4d275752172e702e4cabe329a7bc91e69bc40c1cec038e253",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "4/4 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "020_profil_pesantren_branding_audit_fix.sql",
+      "checksum": "6a722a248c5d0e761b8d1429753e94caf35b6d5454ae2fa652925969f28f2a49",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "6/6 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "021_kesehatan_santri.sql",
+      "checksum": "376fe6dac2684042253b379038b43a5439fda08abc6e157430c48d95a12e5c75",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "14/14 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "022_fix_superadmin_kesehatan_permissions.sql",
+      "checksum": "995890e5c88ec963899f815725f862a8ac46a0c23776e1ea87285e72d83b9ade",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "manual evidence: superadmin health grants present",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "023_kas_instansi_yayasan.sql",
+      "checksum": "5fc23cea9659d22c3ab9b3b448853178f0277aaa119a9bd6f11c689a1ec75a92",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "32/33 found; 1 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "024_expand_unit_pendidikan.sql",
+      "checksum": "5339cdaf65c07f2d18f2f5a9c1aa5f8991eed717f7d6190f0d995e5d7a2766ca",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "historical/demo/unsafe; never execute",
+      "recommended_action": "SUPERSEDED"
+    },
+    {
+      "filename": "025_program_unit.sql",
+      "checksum": "0697a23a5e31feb576e4ffa3bffc3c2d110cfe65b82f353684fba4e9d21dcb0e",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "42/42 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "026_pimpinan_yayasan_readonly.sql",
+      "checksum": "3ecb7747349a8cbe5b32298edb4cd10625d9d72d7aaca7078fe565b16c8c1989",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "manual evidence: whitelist complete, unsafe grants 0",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "027_tenants_foundation.sql",
+      "checksum": "6c31009af3c78d774998c0b5cf380fbbfcd7f693e61f8b2b71751b922a7f1d75",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "27/27 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "028_core_master_data_tenant.sql",
+      "checksum": "8329e12cb821a47834428d809d377f8faf96544be2fcb22807ddf2f451706bdf",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "13/13 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "029_keuangan_dashboard_tenant.sql",
+      "checksum": "c1043516faa4baac5bee5599c28265f030a43cfe627cfe6b7e0736e53275e81c",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "17/17 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "030_kas_instansi_tenant.sql",
+      "checksum": "63238fa4149b8c8d586376fa2518c29184e955744a081fe650da469d99150f1c",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "6/6 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "031_program_unit_tenant.sql",
+      "checksum": "b3f15b02241268ae2c495d2b8887ff2b8c39a7ccf44299fb8fa03151169dddae",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "6/6 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "032_pengumuman_tenant.sql",
+      "checksum": "e1701ac9123ce24609781d4f4e41c812b07cc54e198a953b69c6106c93c0ab7e",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "033_rfid_tenant.sql",
+      "checksum": "879f836b5e6745541bfff8bd6f4fb116996393fd0681c8607aff4298375ce7dc",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "19/19 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "034_pendidikan_keamanan_tenant.sql",
+      "checksum": "cb8104466a3f062f32e15bfbde9fe8fb93e0a2f2b6e00b70c755eacf930ee85d",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "27/27 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "035_platform_superadmin.sql",
+      "checksum": "502d42dd5407c9223c46dcd9154ade7c3a38e7ee9e5bf0fdb496af01a22866ff",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "036_tenant_onboarding.sql",
+      "checksum": "07aecaeb3890747d54357f578a69f076d0e84a62a10a11fa345b3ae3765521b3",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "8/8 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "037_dashboard_indexes.sql",
+      "checksum": "4c0ab78534cd9a6c5da854e1d73ef9aab5e74d2e9ed21873f4e09465074b16f5",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "6/6 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "038_santri_import_columns.sql",
+      "checksum": "5f327d0b31f1324781dcde8ea9cbb8829f3e21a53d1a16a93267226fe5ae89bc",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "039_push_notifications.sql",
+      "checksum": "5390cd6720c7fba35c54458e40bcde5d34154aa0db28f9f0b36c415978a2be59",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "34/34 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "040_add_tahun_berdiri_profil_pesantren.sql",
+      "checksum": "185a6442c7f397d9fbcbf816a8e17280ea3fdf2a88af306f70fc35f00583aff4",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "1/1 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "041_pembayaran_safety_lock.sql",
+      "checksum": "3766a0e8e8005b7441d41a82883e5b8894e3a7737359d58c2969c85efa537a73",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "1/1 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "042_scale_list_indexes.sql",
+      "checksum": "72d3f1a02e6d09e5a0c77c9800a31ae884419255825baba67fe51fa65fb1d484",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "8/8 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "043_audit_logs_tenant.sql",
+      "checksum": "a599a2e6e391c3189131f94c6ba9966bf981afc1d9868e281f6c61b44607145e",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "3/3 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "044_tenant_feature_management.sql",
+      "checksum": "5e1e0240bc95d8bf6f094433c1c96d17639a5fd95985677e2dc96dd7515a08ef",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "18/18 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "045_tenant_billing_foundation.sql",
+      "checksum": "f91882f2e370673290b706c581f35fd35ddaf75a1e9dc8956c69725ab98d22cc",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "12/12 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "046_platform_settings_announcements.sql",
+      "checksum": "9adc64c9abd810717819866cf1b427310f4475bb41046a043021459b287d7812",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "18/18 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "047_santri_birth_profile_fields.sql",
+      "checksum": "96c4d5a3d016afd9a1ca5dec46c1d0e0165286ce1fe8e08cd2bbf50914f3fd23",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "5/5 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "048_wali_in_app_notifications.sql",
+      "checksum": "f0400baaf304d969f6cc0b43a134a0d958ba90f90d82a289a0ffdcc470e17f37",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "18/18 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "049_wali_device_tokens.sql",
+      "checksum": "5c9736c3324af501e116baad7bc25a089615145219d8160663dc4a1bf2404333",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "19/19 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "050_user_kelas_scope.sql",
+      "checksum": "2c21fbd85a92832edd61615a336237fa8a535b4f6132e0c3ebff8a5c9b44fe2c",
+      "status": "NOT_APPLIED",
+      "evidence": "0/14 found; 14 missing; 0 drift",
+      "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "066_reconcile_missing_operational_schema.sql"
+    },
+    {
+      "filename": "051_wali_home_links.sql",
+      "checksum": "1c1bd3a3ec87531b8ec0428986f06841bc99b9eb8a50c07c08e2f10d6d058849",
+      "status": "NOT_APPLIED",
+      "evidence": "0/16 found; 16 missing; 0 drift",
+      "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "066_reconcile_missing_operational_schema.sql"
+    },
+    {
+      "filename": "052_rebrand_platform_settings_klikpesantren.sql",
+      "checksum": "11862f6506d5879193122c9467507efb07f32d7b034ded2986c97d662c67cdec",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "replaced by 068_reconcile_active_permissions.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "068_reconcile_active_permissions.sql"
+    },
+    {
+      "filename": "053_platform_website_settings.sql",
+      "checksum": "ef5ad475fea3b85fbe3c621ec1487a4b2647f565eee485d02cfa807f1d6e8e87",
+      "status": "NOT_APPLIED",
+      "evidence": "0/13 found; 13 missing; 0 drift",
+      "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "066_reconcile_missing_operational_schema.sql"
+    },
+    {
+      "filename": "054_tenant_domains_foundation.sql",
+      "checksum": "d21f28a3f6776e30e7524f078566b79e249e9acebe6f94f95e63fa8a4173b6d9",
+      "status": "NOT_APPLIED",
+      "evidence": "0/30 found; 30 missing; 0 drift",
+      "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "066_reconcile_missing_operational_schema.sql"
+    },
+    {
+      "filename": "055_custom_tenant_domains.sql",
+      "checksum": "e74ccf8a0b9b113e85d2def69155714a9520af14eb2d2ad7f6a7ad7a26cddd98",
+      "status": "NOT_APPLIED",
+      "evidence": "0/2 found; 2 missing; 0 drift",
+      "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "066_reconcile_missing_operational_schema.sql"
+    },
+    {
+      "filename": "056_wali_token_version.sql",
+      "checksum": "51220cd606c19885ae2c7110e308191b0a58977599777cceae318666e78449f1",
+      "status": "NOT_APPLIED",
+      "evidence": "0/2 found; 2 missing; 0 drift",
+      "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "066_reconcile_missing_operational_schema.sql"
+    },
+    {
+      "filename": "057_mata_pelajaran_kelas.sql",
+      "checksum": "59e65a0a2be3b87330cbeccb61ce245c0ca4475ebc8be0d94b8d9f284dbc49b2",
+      "status": "NOT_APPLIED",
+      "evidence": "0/23 found; 23 missing; 0 drift",
+      "notes": "replaced by 067_reconcile_academic_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "067_reconcile_academic_schema.sql"
+    },
+    {
+      "filename": "058_santri_kamar.sql",
+      "checksum": "e7b503596146f5b5cce07a17c30030ead00d60dcf779bc1b476ded0dca1cd624",
+      "status": "NOT_APPLIED",
+      "evidence": "0/2 found; 2 missing; 0 drift",
+      "notes": "replaced by 067_reconcile_academic_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "067_reconcile_academic_schema.sql"
+    },
+    {
+      "filename": "059_alumni.sql",
+      "checksum": "fd225c68677c6225c69b3bf35dd93a3e8acca2d3d0a96a66bf8f59c5065ef80c",
+      "status": "NOT_APPLIED",
+      "evidence": "0/24 found; 24 missing; 0 drift",
+      "notes": "replaced by 067_reconcile_academic_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "067_reconcile_academic_schema.sql"
+    },
+    {
+      "filename": "060_alumni_kelas_terakhir.sql",
+      "checksum": "4368072b6b08750064cd564f5e2304738897cbabf4c1464b99825b2c7075d620",
+      "status": "NOT_APPLIED",
+      "evidence": "0/1 found; 1 missing; 0 drift",
+      "notes": "replaced by 067_reconcile_academic_schema.sql",
+      "recommended_action": "APPLY_RECONCILIATION",
+      "replaced_by": "067_reconcile_academic_schema.sql"
+    },
+    {
+      "filename": "061_core_unit_id.sql",
+      "checksum": "8f4566abbd94b7640502aec7815e426fbe7fee18f82f8513d6cee46c16769eda",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "4/4 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "062_unit_scope_core_relations.sql",
+      "checksum": "c0ce0551bd4c28df48df4b2a997225d1cddbfdd34217070fe5d61ad03b477e24",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
+      "notes": "catalog evidence matches source",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "063_rbac_module_permissions.sql",
+      "checksum": "844e33248ec309baa086c0ceb2e829dfa5a9ed1d6cc27ae2d15d462eaa990ad0",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "manual evidence: canonical alumni/content/wallet grants present",
+      "recommended_action": "BASELINE_AS_APPLIED"
+    },
+    {
+      "filename": "064_multi_unit_foundation.sql",
+      "checksum": "1fad0cf4da6589c824db0abd6b2fd77772fed7854623a5789fb88f4c05887226",
+      "status": "NOT_APPLIED",
+      "evidence": "0/81 found; 81 missing; 0 drift",
+      "notes": "forward migration; execute by manifest order",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 150
+    },
+    {
+      "filename": "065_reconcile_core_constraints.sql",
+      "checksum": "e250a1a7d000576541bc96d039c8f7cc06778e9e20c69dedef17e1530d57c0b8",
+      "status": "NOT_APPLIED",
+      "evidence": "0/7 found; 7 missing; 0 drift",
+      "notes": "forward migration; execute by manifest order",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 100
+    },
+    {
+      "filename": "066_reconcile_missing_operational_schema.sql",
+      "checksum": "a7cd19decdeca963104b8bea2c41a0c11b38e247bced9b408835c69e133ecff5",
+      "status": "NOT_APPLIED",
+      "evidence": "0/77 found; 77 missing; 0 drift",
+      "notes": "forward migration; execute by manifest order",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 110
+    },
+    {
+      "filename": "067_reconcile_academic_schema.sql",
+      "checksum": "9ffe076c0c5af4ce1ad7026d5bc61cefd9644ab953c97a092b98c2d53bf57d13",
+      "status": "NOT_APPLIED",
+      "evidence": "0/53 found; 53 missing; 0 drift",
+      "notes": "forward migration; execute by manifest order",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 120
+    },
+    {
+      "filename": "068_reconcile_active_permissions.sql",
+      "checksum": "7f7f96d27d296f2bb661cddd1adbbb0d9e6447fbfc1b39ac7fc3b5160d3f3396",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "forward migration; execute by manifest order",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 130
+    },
+    {
+      "filename": "069_reconcile_wali_phone_canonical.sql",
+      "checksum": "c0a0b28dcd2c28e2f3e7ebad82a1e7ee97709b913a9b2137e54f2a5c48d79a65",
+      "status": "CANNOT_VERIFY",
+      "evidence": "0/0 found; 0 missing; 0 drift",
+      "notes": "forward migration; execute by manifest order",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 140
+    }
+  ]
+}

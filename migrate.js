@@ -1,64 +1,105 @@
 require("dotenv").config();
 
-const fs = require("fs");
-const path = require("path");
 const pool = require("./db");
-
-const MIGRATIONS_DIR = path.join(__dirname, "migrations");
-
-function migrationSortKey(filename) {
-  const match = filename.match(/^(\d+)/);
-  return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
-}
-
-function listMigrationFiles() {
-  return fs
-    .readdirSync(MIGRATIONS_DIR)
-    .filter((name) => name.endsWith(".sql"))
-    .sort((a, b) => {
-      const order = migrationSortKey(a) - migrationSortKey(b);
-      return order !== 0 ? order : a.localeCompare(b);
-    });
-}
+const {
+  applyMigrationPolicy,
+  getMigrationStatus,
+  ledgerExists,
+  listMigrationFiles,
+  printMigrationStatus,
+  recordMigration,
+  readMigration,
+} = require("./utils/migrationLedger");
 
 async function run() {
-  const files = listMigrationFiles();
+  const command = String(process.argv[2] || "up").trim().toLowerCase();
+  const toFlagIndex = process.argv.indexOf("--to");
+  const targetFilename = toFlagIndex >= 0 ? String(process.argv[toFlagIndex + 1] || "").trim() : null;
+  const statusOnly = command === "status";
+  const dryRun = command === "dry-run" || command === "dryrun";
 
-  if (files.length === 0) {
-    console.log("No .sql migration files found in migrations/");
-    process.exit(0);
+  if (!["up", "status", "dry-run", "dryrun"].includes(command)) {
+    throw new Error("Command migration harus: up, status, atau dry-run");
   }
 
-  console.log(`Database: ${process.env.DB_NAME} @ ${process.env.DB_HOST}`);
-  console.log(`Found ${files.length} migration file(s):\n`);
-  files.forEach((file, index) => console.log(`  ${index + 1}. ${file}`));
-  console.log("");
-
-  await pool.query("SELECT 1");
-  console.log("Connected.\n");
-
-  for (const file of files) {
-    const sqlPath = path.join(MIGRATIONS_DIR, file);
-    const sql = fs.readFileSync(sqlPath, "utf8");
-
-    console.log(`Running: ${file}`);
-
+  if (statusOnly || dryRun) {
+    const client = await pool.connect();
     try {
-      await pool.query(sql);
-      console.log(`OK: ${file}\n`);
-    } catch (err) {
-      console.error(`FAILED: ${file}`);
-      console.error(err.message);
-      await pool.end();
-      process.exit(1);
+      await client.query("BEGIN READ ONLY");
+      const status = applyMigrationPolicy(await getMigrationStatus(client));
+      printMigrationStatus(status, { dryRun });
+      if (status.some((item) => item.state === "drift")) process.exitCode = 1;
+      await client.query("ROLLBACK");
+    } catch (error) {
+      try { await client.query("ROLLBACK"); } catch (_) { /* best effort only */ }
+      throw error;
+    } finally {
+      client.release();
+    }
+    return;
+  }
+
+  const hadLedger = await ledgerExists(pool);
+  if (!hadLedger) {
+    throw new Error(
+      "schema_migrations belum ada. Jalankan audit/plan dan baseline berkonfirmasi; migration up tidak membuat ledger otomatis.",
+    );
+  }
+  const status = applyMigrationPolicy(await getMigrationStatus(pool));
+  const drift = status.filter((item) => item.state === "drift");
+  if (drift.length) {
+    throw new Error(
+      `Checksum migration berubah setelah applied: ${drift.map((item) => item.filename).join(", ")}`,
+    );
+  }
+
+  const blocked = status.filter((item) => ["blocked", "baseline-missing"].includes(item.state));
+  if (blocked.length) {
+    throw new Error(
+      `Migration plan diblokir policy: ${blocked.map((item) => `${item.filename}:${item.state}`).join(", ")}`,
+    );
+  }
+
+  let pending = status
+    .filter((item) => item.state === "pending")
+    .sort((a, b) => a.execution_order - b.execution_order || a.filename.localeCompare(b.filename));
+  if (targetFilename) {
+    const targetIndex = pending.findIndex((item) => item.filename === targetFilename);
+    if (targetIndex < 0) {
+      throw new Error(`Target --to tidak ditemukan dalam execution plan pending: ${targetFilename}`);
+    }
+    pending = pending.slice(0, targetIndex + 1);
+    console.log(`Migration target: ${targetFilename}`);
+  }
+  if (!pending.length) {
+    console.log("Tidak ada migration pending.");
+    return;
+  }
+
+  for (const item of pending) {
+    const migration = readMigration(item.filename);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(migration.executionSql);
+      await recordMigration(client, migration);
+      await client.query("COMMIT");
+      console.log(`APPLIED ${item.filename}`);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      error.message = `Migration gagal (${item.filename}): ${error.message}`;
+      throw error;
+    } finally {
+      client.release();
     }
   }
-
-  await pool.end();
-  console.log("Migration selesai.");
 }
 
-run().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+run()
+  .catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await pool.end();
+  });
