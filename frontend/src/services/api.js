@@ -51,9 +51,12 @@ api.interceptors.response.use(
 
     if (status === 401) {
       clearSession();
+      const sessionExpired = data?.code === "SESSION_EXPIRED";
       sessionStorage.setItem(
         "auth_message",
-        data?.error || "Sesi login berakhir. Silakan login ulang."
+        sessionExpired
+          ? "Hak akses atau sesi Anda telah diperbarui. Silakan login ulang."
+          : data?.error || "Sesi login berakhir. Silakan login ulang."
       );
 
       if (window.location.pathname !== "/") {

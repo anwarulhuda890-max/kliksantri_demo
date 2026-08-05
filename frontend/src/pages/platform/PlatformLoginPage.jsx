@@ -178,14 +178,17 @@ function PlatformLoginPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => {
+    const message = sessionStorage.getItem("platform_auth_message") || "";
+    if (message) sessionStorage.removeItem("platform_auth_message");
+    return message;
+  });
   const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(() => Boolean(getPlatformToken()));
 
   useEffect(() => {
     const token = getPlatformToken();
     if (!token) {
-      setChecking(false);
       return;
     }
 

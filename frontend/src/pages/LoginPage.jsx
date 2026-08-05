@@ -200,7 +200,11 @@ function LoginPage({ tenantSubdomain = false, hostnameTenantSlug = "" }) {
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
+  const [loginError, setLoginError] = useState(() => {
+    const message = sessionStorage.getItem("auth_message") || "";
+    if (message) sessionStorage.removeItem("auth_message");
+    return message;
+  });
   const [slugStatus, setSlugStatus] = useState("idle");
   const [slugMessage, setSlugMessage] = useState("");
   const [publicProfile, setPublicProfile] = useState(null);
@@ -319,6 +323,7 @@ function LoginPage({ tenantSubdomain = false, hostnameTenantSlug = "" }) {
     if (suspendMsg) {
       setLoginError(suspendMsg);
       sessionStorage.removeItem(TENANT_SUSPEND_SESSION_KEY);
+      return;
     }
   }, [slugFromUrl]);
 
