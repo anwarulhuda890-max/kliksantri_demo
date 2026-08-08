@@ -30,6 +30,8 @@ import SantriOperationalChecklist from "../components/santri/SantriOperationalCh
 import ImageUploadField from "../components/ImageUploadField";
 import { resolveDisplayMediaUrl } from "../utils/mediaUrl";
 import { formatCurrency } from "../utils/formatCurrency";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { getUser } from "../utils/storage";
 
 function isStatusNonAktif(status) {
   const normalized = String(status ?? "aktif").trim().toLowerCase();
@@ -71,8 +73,11 @@ function formatLimitHarian(value) {
 }
 
 function SantriPage() {
+  const { activeUnitId, activeUnit, allUnitsAllowed } = useActiveUnit();
+  const currentUser = getUser();
   const [santri, setSantri] = useState([]);
   const [kelas, setKelas] = useState([]);
+  const [identityCandidates, setIdentityCandidates] = useState([]);
   const [editId, setEditId] = useState(null);
   const [originalStatus, setOriginalStatus] = useState("aktif");
   const [importOpen, setImportOpen] = useState(false);
@@ -95,11 +100,14 @@ function SantriPage() {
     status: "aktif",
     limit_harian: "0",
     tanpa_limit_harian: false,
+    existing_santri_id: "",
   });
 
   const getSantri = async () => {
     try {
-      const response = await api.get("/santri");
+      const response = await api.get("/santri", {
+        params: activeUnitId ? { unit_id: activeUnitId } : (allUnitsAllowed ? { scope: "all" } : {}),
+      });
       setSantri(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -108,17 +116,38 @@ function SantriPage() {
 
   const getKelas = async () => {
     try {
-      const response = await api.get("/kelas");
+      const response = await api.get("/kelas", {
+        params: activeUnitId ? { unit_id: activeUnitId } : (allUnitsAllowed ? { scope: "all" } : {}),
+      });
       setKelas(response.data.data || []);
     } catch (err) {
       console.error(err);
     }
   };
 
+  const getIdentityCandidates = async () => {
+    if (!activeUnitId || currentUser?.role !== "superadmin") {
+      setIdentityCandidates([]);
+      return;
+    }
+    try {
+      const response = await api.get("/santri/identity-candidates", {
+        params: { unit_id: activeUnitId },
+      });
+      setIdentityCandidates(response.data.data || []);
+    } catch {
+      setIdentityCandidates([]);
+    }
+  };
+
   useEffect(() => {
+    // Loading workspace data synchronizes this page with the selected external API scope.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     getSantri();
     getKelas();
-  }, []);
+    getIdentityCandidates();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUnitId]);
 
   const filteredSantri = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
@@ -137,6 +166,12 @@ function SantriPage() {
         item.orang_tua,
         item.nomor_hp_ortu,
         item.uid_rfid,
+        ...(item.memberships || []).flatMap((membership) => [
+          membership.unit_nama,
+          membership.unit_kode,
+          membership.nama_kelas,
+          membership.unit_student_number,
+        ]),
       ]
         .some((field) => String(field || "").toLowerCase().includes(q)),
     );
@@ -157,15 +192,21 @@ function SantriPage() {
 
   const buildPayload = () => ({
     ...form,
+    unit_id: activeUnitId || undefined,
     limit_harian: form.tanpa_limit_harian ? null : Number(form.limit_harian || 0),
     tanpa_limit_harian: undefined,
   });
 
   const addSantri = async () => {
     try {
+      if (!activeUnitId) {
+        alert("Pilih satu Unit Pendidikan sebelum menambah santri.");
+        return;
+      }
       await api.post("/santri", buildPayload());
       resetForm();
       getSantri();
+      getIdentityCandidates();
     } catch (err) {
       console.error(err);
     }
@@ -195,6 +236,7 @@ function SantriPage() {
         ? ""
         : String(item.limit_harian),
       tanpa_limit_harian: item.limit_harian === null || item.limit_harian === undefined,
+      existing_santri_id: "",
     });
   };
 
@@ -204,7 +246,9 @@ function SantriPage() {
       const willNonAktif = isStatusNonAktif(form.status);
 
       if (wasAktif && willNonAktif) {
-        const summaryRes = await api.get(`/santri/${editId}/exit-summary`);
+      const summaryRes = await api.get(`/santri/${editId}/exit-summary`, {
+        params: { unit_id: activeUnitId },
+      });
         const summary = summaryRes.data.data;
         const ok = window.confirm(
           `Santri akan diubah menjadi nonaktif.\n\nRingkasan:\n${formatExitSummary(summary)}\n\nLanjutkan?`,
@@ -232,7 +276,7 @@ function SantriPage() {
 
   const deleteSantri = async (id) => {
     try {
-      await api.delete(`/santri/${id}`);
+      await api.delete(`/santri/${id}`, { params: { unit_id: activeUnitId } });
       getSantri();
     } catch (err) {
       console.error(err);
@@ -257,6 +301,7 @@ function SantriPage() {
       status: "aktif",
       limit_harian: "0",
       tanpa_limit_harian: false,
+      existing_santri_id: "",
     });
     setEditId(null);
     setOriginalStatus("aktif");
@@ -271,6 +316,7 @@ function SantriPage() {
       JenisKelamin: item.jenis_kelamin,
       TanggalMasukPesantren: item.tanggal_masuk_pesantren,
       Kelas: item.nama_kelas,
+      Unit: (item.memberships || []).map((membership) => membership.unit_nama).join(", "),
       Kamar: item.kamar,
       OrangTua: item.orang_tua,
       NomorHPWali: item.nomor_hp_ortu,
@@ -306,10 +352,37 @@ function SantriPage() {
 
   return (
     <AppShell title="Data Santri" breadcrumb="Master Data / Santri">
+      <div style={{ marginBottom: 12, color: "var(--text-secondary)", fontSize: 13, fontWeight: 600 }}>
+        Workspace: {activeUnit?.nama || (allUnitsAllowed ? "Semua Unit" : "Unit belum dipilih")}
+        {!activeUnitId && allUnitsAllowed ? " — pilih satu unit untuk menambah, mengubah, menghapus, atau import." : ""}
+      </div>
       <Card padding="md" shadow="card" border={false} radius="xl">
         <FormSection title={editId ? "Edit Santri" : "Tambah Santri"}>
           <FormSection title="Data Santri">
             <FormGrid>
+              {!editId && currentUser?.role === "superadmin" ? (
+                <FormField
+                  label="Hubungkan Identitas Existing (Opsional)"
+                  htmlFor="santri-existing-identity"
+                  fullWidth
+                  helper="Pilih identitas yang sudah ada agar tidak membuat santri duplikat. Membership unit baru akan dibuat pada workspace aktif."
+                >
+                  <Select
+                    id="santri-existing-identity"
+                    name="existing_santri_id"
+                    value={form.existing_santri_id}
+                    onChange={handleChange}
+                  >
+                    <option value="">Buat identitas santri baru</option>
+                    {identityCandidates.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.nama} — {candidate.nis || "tanpa NIS"}
+                        {candidate.unit_names ? ` (${candidate.unit_names})` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </FormField>
+              ) : null}
               <FormField label="NIS" htmlFor="santri-nis" required>
                 <Input id="santri-nis" type="text" name="nis" value={form.nis} onChange={handleChange} />
               </FormField>
@@ -480,7 +553,7 @@ function SantriPage() {
           </FormSection>
 
           <FormActionBar className="form-action-bar-v3--compact">
-            <Button variant="primary" onClick={editId ? updateSantri : addSantri}>
+            <Button variant="primary" onClick={editId ? updateSantri : addSantri} disabled={!activeUnitId}>
               {editId ? "Update" : "Tambah"}
             </Button>
           </FormActionBar>
@@ -510,7 +583,7 @@ function SantriPage() {
                 <Button variant="secondary" onClick={handleDownloadTemplate}>
                   Download Template
                 </Button>
-                <Button variant="primary" onClick={() => setImportOpen(true)}>
+                <Button variant="primary" onClick={() => setImportOpen(true)} disabled={!activeUnitId}>
                   Import Excel
                 </Button>
                 <Button variant="success" onClick={handleExport}>
@@ -542,6 +615,7 @@ function SantriPage() {
                       <th>JK</th>
                       <th>Tanggal Masuk</th>
                       <th>Kelas</th>
+                      <th>Unit</th>
                       <th>Kamar / Asrama</th>
                       <th>Wali</th>
                       <th translate="no">Nomor HP Wali</th>
@@ -575,6 +649,7 @@ function SantriPage() {
                         <td>{item.jenis_kelamin || "-"}</td>
                         <td>{formatDateIndonesia(item.tanggal_masuk_pesantren) || "-"}</td>
                         <td>{item.nama_kelas || "—"}</td>
+                        <td>{(item.memberships || []).map((membership) => membership.unit_nama).join(", ") || "—"}</td>
                         <td>{item.kamar || "—"}</td>
                         <td translate="no">{item.orang_tua || "—"}</td>
                         <td translate="no">{item.nomor_hp_ortu || "—"}</td>
@@ -585,8 +660,10 @@ function SantriPage() {
                           <TableActions
                             items={[
                               { type: "detail", onClick: () => setDetailSantri(item) },
-                              { type: "edit", onClick: () => editSantri(item) },
-                              { type: "delete", onClick: () => deleteSantri(item.id) },
+                              ...(activeUnitId ? [
+                                { type: "edit", onClick: () => editSantri(item) },
+                                { type: "delete", onClick: () => deleteSantri(item.id) },
+                              ] : []),
                             ]}
                           />
                         </td>
@@ -611,6 +688,8 @@ function SantriPage() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onImported={getSantri}
+        unitId={activeUnitId}
+        unitName={activeUnit?.nama}
       />
 
       <Modal
@@ -630,6 +709,10 @@ function SantriPage() {
               value={formatDateIndonesia(detailSantri.tanggal_masuk_pesantren) || "-"}
             />
             <DetailItem label="Kelas" value={detailSantri.nama_kelas || "-"} />
+            <DetailItem
+              label="Unit Pendidikan"
+              value={(detailSantri.memberships || []).map((membership) => membership.unit_nama).join(", ") || "-"}
+            />
             <DetailItem label="Kamar / Asrama" value={detailSantri.kamar || "-"} />
             <DetailItem label="Wali" value={detailSantri.orang_tua || "-"} translate="no" />
             <DetailItem label="Nomor HP Wali" value={detailSantri.nomor_hp_ortu || "-"} translate="no" />

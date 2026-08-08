@@ -4,7 +4,6 @@ const pool = require("../db");
 const authMiddleware = require("../middleware/authMiddleware");
 const tenantMiddleware = require("../middleware/tenantMiddleware");
 const requirePermission = require("../middleware/requirePermission");
-const { assertKelasInTenant } = require("../services/tenantScope");
 const { syncWaliFromSantri } = require("../services/waliSyncService");
 const {
   getOperationalChecklist,
@@ -12,7 +11,19 @@ const {
 } = require("../services/santriOperationalService");
 const { isSantriNonAktif } = require("../utils/santriStatus");
 const { ensureAlumni } = require("../services/alumniService");
-const { getScopedKelasIds, assertKelasInScopedUnit } = require("../middleware/dataUnitScope");
+const { canAccessAllUnits, loadVerifiedUser, resolveActiveUnit } = require("../services/unitAccessService");
+const {
+  assertSantriUnitAccess,
+  assignClassEnrollment,
+  createMembershipWithEnrollment,
+  getClassInUnit,
+  syncLegacyClass,
+} = require("../services/santriUnitService");
+const {
+  findIdentityConflict,
+  getVisibleSantri,
+  listVisibleSantri,
+} = require("../services/santriMultiUnitService");
 const {
   buildTemplateWorkbook,
   previewImport,
@@ -51,6 +62,29 @@ const withImportAuth = [
   requirePermission("santri.create"),
 ];
 
+function sendScopedError(res, error, fallback = "Gagal memproses data santri") {
+  const duplicateIdentity = error.code === "23505";
+  const status = duplicateIdentity ? 409 : (Number(error.status) || 500);
+  return res.status(status).json({
+    success: false,
+    error: duplicateIdentity
+      ? "Identitas atau membership santri sudah terdaftar"
+      : status >= 500 ? fallback : error.message,
+    code: duplicateIdentity ? "SANTRI_IDENTITY_EXISTS" : error.code,
+  });
+}
+
+async function resolveSantriWorkspace(req, client = pool, { requireUnit = false } = {}) {
+  const workspace = await resolveActiveUnit(req, client);
+  if (requireUnit && workspace.mode !== "UNIT") {
+    const error = new Error("Pilih satu unit aktif untuk melanjutkan");
+    error.status = 400;
+    error.code = "UNIT_REQUIRED";
+    throw error;
+  }
+  return workspace;
+}
+
 router.get("/import/template", ...withImportAuth, (_req, res) => {
   try {
     const buffer = buildTemplateWorkbook();
@@ -87,14 +121,14 @@ router.post("/import/preview", ...withImportAuth, (req, res) => {
     }
 
     try {
-      const preview = await previewImport(req.tenantId, req.file.buffer);
+      const workspace = await resolveSantriWorkspace(req, pool, { requireUnit: true });
+      const preview = await previewImport(req.tenantId, req.file.buffer, {
+        unitId: workspace.unitId,
+      });
       res.json(preview);
     } catch (parseErr) {
       console.error(parseErr);
-      res.status(400).json({
-        success: false,
-        error: parseErr.message || "Gagal membaca file Excel",
-      });
+      sendScopedError(res, parseErr, "Gagal membaca file Excel");
     }
   });
 });
@@ -102,46 +136,81 @@ router.post("/import/preview", ...withImportAuth, (req, res) => {
 router.post("/import/commit", ...withImportAuth, async (req, res) => {
   try {
     const { rows } = req.body;
-    const result = await commitImport(req.tenantId, rows);
+    const workspace = await resolveSantriWorkspace(req, pool, { requireUnit: true });
+    const result = await commitImport(req.tenantId, rows, { unitId: workspace.unitId });
     res.json(result);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendScopedError(res, err, "Gagal mengimport santri");
   }
 });
 
-router.get("/", ...withTenant, async (req, res) => {
+router.get("/", ...withTenant, requirePermission("santri.view"), async (req, res) => {
   try {
-    const scopedKelasIds = await getScopedKelasIds(req);
-    const scopeSql = scopedKelasIds ? " AND santri.kelas_id = ANY($2::int[])" : "";
-    const scopeParams = scopedKelasIds ? [req.tenantId, scopedKelasIds] : [req.tenantId];
-    const result = await pool.query(
-      `SELECT
-         santri.*,
-         to_char(santri.tanggal_lahir, 'YYYY-MM-DD') AS tanggal_lahir,
-         to_char(santri.tanggal_masuk_pesantren, 'YYYY-MM-DD') AS tanggal_masuk_pesantren,
-         kelas.nama_kelas,
-         santri.orang_tua AS nama_wali,
-         santri.nomor_hp_ortu AS nomor_hp
-       FROM santri
-       LEFT JOIN kelas
-         ON santri.kelas_id = kelas.id
-        AND kelas.tenant_id = santri.tenant_id
-       LEFT JOIN wali_santri
-         ON santri.id = wali_santri.santri_id
-        AND wali_santri.tenant_id = santri.tenant_id
-       WHERE santri.tenant_id = $1
-         AND LOWER(TRIM(COALESCE(santri.status, 'aktif'))) IN ('aktif', 'active', '')${scopeSql}
-       ORDER BY santri.id DESC`,
-      scopeParams
-    );
-
-    res.json({ success: true, data: result.rows });
+    const workspace = await resolveSantriWorkspace(req);
+    const rows = await listVisibleSantri({
+      tenantId: req.tenantId,
+      unitId: workspace.unitId,
+      search: req.query.search,
+    });
+    res.json({
+      success: true,
+      data: rows,
+      access: { all_units: workspace.mode === "ALL", unit_id: workspace.unitId },
+      totals: { unique_individuals: rows.length },
+    });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendScopedError(res, err, "Gagal memuat data santri");
   }
 });
+
+router.get(
+  "/identity-candidates",
+  ...withTenant,
+  requirePermission("santri.create"),
+  async (req, res) => {
+    try {
+      const workspace = await resolveSantriWorkspace(req, pool, { requireUnit: true });
+      const verifiedUser = await loadVerifiedUser(req.user, req.tenantId);
+      if (!canAccessAllUnits(verifiedUser)) {
+        throw Object.assign(new Error("Pencarian identitas lintas unit hanya tersedia untuk superadmin"), {
+          status: 403,
+          code: "IDENTITY_SEARCH_REQUIRES_SUPERADMIN",
+        });
+      }
+      const search = String(req.query.search || "").trim();
+      const { rows } = await pool.query(
+        `SELECT s.id, s.nama, s.nis,
+                COALESCE(string_agg(DISTINCT u.nama, ', ' ORDER BY u.nama), '') AS unit_names
+         FROM santri s
+         LEFT JOIN santri_units existing
+           ON existing.tenant_id = s.tenant_id AND existing.santri_id = s.id
+          AND existing.status = 'active' AND existing.left_at IS NULL
+         LEFT JOIN unit_pendidikan u
+           ON u.id = existing.unit_id AND u.tenant_id = existing.tenant_id
+         WHERE s.tenant_id = $1
+           AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif','active','')
+           AND NOT EXISTS (
+             SELECT 1 FROM santri_units current_unit
+             WHERE current_unit.tenant_id = s.tenant_id
+               AND current_unit.santri_id = s.id
+               AND current_unit.unit_id = $2
+               AND current_unit.status = 'active'
+               AND current_unit.left_at IS NULL
+           )
+           AND ($3::text = '' OR s.nama ILIKE '%' || $3 || '%' OR COALESCE(s.nis, '') ILIKE '%' || $3 || '%')
+         GROUP BY s.id
+         ORDER BY s.nama, s.id
+         LIMIT 100`,
+        [req.tenantId, workspace.unitId, search],
+      );
+      res.json({ success: true, data: rows });
+    } catch (error) {
+      sendScopedError(res, error, "Gagal mencari identitas santri");
+    }
+  },
+);
 
 router.post(
   "/",
@@ -166,6 +235,8 @@ router.post(
         kamar,
         foto,
         limit_harian,
+        existing_santri_id,
+        unit_student_number,
       } = req.body;
 
       let normalizedLimitHarian;
@@ -175,70 +246,106 @@ router.post(
         return res.status(400).json({ success: false, error: limitErr.message });
       }
 
-      const kelasCheck = await assertKelasInTenant(req.tenantId, kelas_id, client);
-      if (!kelasCheck.ok) {
-        return res.status(400).json({ success: false, error: kelasCheck.error });
+      await client.query("BEGIN");
+      const workspace = await resolveSantriWorkspace(req, client, { requireUnit: true });
+      await getClassInUnit(req.tenantId, kelas_id, workspace.unitId, client);
+
+      const conflict = await findIdentityConflict(req.tenantId, {
+        santriId: existing_santri_id || null,
+        nis,
+        uidRfid: uid_rfid,
+      }, client);
+
+      let santri;
+      let waliSync = null;
+      if (existing_santri_id) {
+        const verifiedUser = await loadVerifiedUser(req.user, req.tenantId, client);
+        if (!canAccessAllUnits(verifiedUser)) {
+          throw Object.assign(new Error("Penghubungan identitas lintas unit memerlukan superadmin"), {
+            status: 403,
+            code: "IDENTITY_LINK_REQUIRES_SUPERADMIN",
+          });
+        }
+        if (!conflict || Number(conflict.id) !== Number(existing_santri_id)) {
+          throw Object.assign(new Error("Identitas santri tidak ditemukan pada tenant ini"), {
+            status: 404,
+            code: "SANTRI_IDENTITY_NOT_FOUND",
+          });
+        }
+        const existing = await client.query(
+          `SELECT * FROM santri WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+          [existing_santri_id, req.tenantId],
+        );
+        santri = existing.rows[0];
+      } else {
+        if (conflict) {
+          throw Object.assign(new Error("Identitas santri kemungkinan sudah terdaftar. Hubungkan identitas melalui superadmin."), {
+            status: 409,
+            code: "SANTRI_IDENTITY_EXISTS",
+          });
+        }
+        const result = await client.query(
+          `INSERT INTO santri (
+             nis, nama, tempat_lahir, tanggal_lahir, jenis_kelamin,
+             tanggal_masuk_pesantren, uid_rfid, alamat, orang_tua,
+             nomor_hp_ortu, kelas_id, kamar, foto, limit_harian, tenant_id
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+           RETURNING *,
+             to_char(tanggal_lahir, 'YYYY-MM-DD') AS tanggal_lahir,
+             to_char(tanggal_masuk_pesantren, 'YYYY-MM-DD') AS tanggal_masuk_pesantren`,
+          [nis, nama, tempat_lahir || null, tanggal_lahir || null,
+            jenis_kelamin || null, tanggal_masuk_pesantren || null, uid_rfid,
+            alamat, orang_tua, nomor_hp_ortu, kelas_id || null, kamar || null,
+            foto, normalizedLimitHarian, req.tenantId],
+        );
+        santri = result.rows[0];
+        waliSync = await syncWaliFromSantri(client, { tenantId: req.tenantId, santri });
       }
 
-      const unitKelasCheck = await assertKelasInScopedUnit(req, kelas_id, client);
-      if (!unitKelasCheck.ok) return res.status(403).json({ success: false, error: unitKelasCheck.error });
-
-      await client.query("BEGIN");
-
-      const result = await client.query(
-        `INSERT INTO santri (
-           nis, nama, tempat_lahir, tanggal_lahir, jenis_kelamin,
-           tanggal_masuk_pesantren, uid_rfid, alamat, orang_tua,
-           nomor_hp_ortu, kelas_id, kamar, foto, limit_harian, tenant_id
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-          RETURNING *,
-            to_char(tanggal_lahir, 'YYYY-MM-DD') AS tanggal_lahir,
-            to_char(tanggal_masuk_pesantren, 'YYYY-MM-DD') AS tanggal_masuk_pesantren`,
-        [
-          nis,
-          nama,
-          tempat_lahir || null,
-          tanggal_lahir || null,
-          jenis_kelamin || null,
-          tanggal_masuk_pesantren || null,
-          uid_rfid,
-          alamat,
-          orang_tua,
-          nomor_hp_ortu,
-          kelas_id || null,
-          kamar || null,
-          foto,
-          normalizedLimitHarian,
-          req.tenantId,
-        ]
+      const primaryCheck = await client.query(
+        `SELECT 1 FROM santri_units
+         WHERE tenant_id = $1 AND santri_id = $2
+           AND status = 'active' AND left_at IS NULL AND is_primary = true`,
+        [req.tenantId, santri.id],
       );
-
-      const santri = result.rows[0];
-      const waliSync = await syncWaliFromSantri(client, {
-        tenantId: req.tenantId,
-        santri,
-      });
+      const membership = await createMembershipWithEnrollment({
+        tenant_id: req.tenantId,
+        santri_id: santri.id,
+        unit_id: workspace.unitId,
+        unit_student_number: unit_student_number || nis || null,
+        joined_at: tanggal_masuk_pesantren || null,
+        is_primary: primaryCheck.rows.length === 0,
+        kelas_id: kelas_id || null,
+      }, client);
 
       await client.query("COMMIT");
 
       res.json({
         success: true,
         data: santri,
+        membership,
         wali_sync: waliSync,
       });
     } catch (err) {
       await client.query("ROLLBACK");
       console.log(err);
-      res.status(500).json({ success: false, error: err.message });
+      sendScopedError(res, err);
     } finally {
       client.release();
     }
   }
 );
 
-router.get("/:id/operational-checklist", ...withTenant, async (req, res) => {
+router.get("/:id/operational-checklist", ...withTenant, requirePermission("santri.view"), async (req, res) => {
   try {
+    const workspace = await resolveSantriWorkspace(req);
+    const visible = await getVisibleSantri({
+      tenantId: req.tenantId,
+      unitId: workspace.unitId,
+      santriId: req.params.id,
+    });
+    if (!visible) return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
     const data = await getOperationalChecklist(req.tenantId, req.params.id);
     if (!data) {
       return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
@@ -246,12 +353,19 @@ router.get("/:id/operational-checklist", ...withTenant, async (req, res) => {
     res.json({ success: true, data });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendScopedError(res, err);
   }
 });
 
-router.get("/:id/exit-summary", ...withTenant, async (req, res) => {
+router.get("/:id/exit-summary", ...withTenant, requirePermission("santri.view"), async (req, res) => {
   try {
+    const workspace = await resolveSantriWorkspace(req);
+    const visible = await getVisibleSantri({
+      tenantId: req.tenantId,
+      unitId: workspace.unitId,
+      santriId: req.params.id,
+    });
+    if (!visible) return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
     const data = await getExitSummary(req.tenantId, req.params.id);
     if (!data) {
       return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
@@ -259,7 +373,7 @@ router.get("/:id/exit-summary", ...withTenant, async (req, res) => {
     res.json({ success: true, data });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendScopedError(res, err);
   }
 });
 
@@ -296,14 +410,16 @@ router.put(
       } catch (limitErr) {
         return res.status(400).json({ success: false, error: limitErr.message });
       }
-      const kelasCheck = await assertKelasInTenant(req.tenantId, kelas_id, client);
-      if (!kelasCheck.ok) {
-        return res.status(400).json({ success: false, error: kelasCheck.error });
-      }
-      const unitKelasCheck = await assertKelasInScopedUnit(req, kelas_id, client);
-      if (!unitKelasCheck.ok) return res.status(403).json({ success: false, error: unitKelasCheck.error });
-
       await client.query("BEGIN");
+
+      const workspace = await resolveSantriWorkspace(req, client, { requireUnit: true });
+      const membership = await assertSantriUnitAccess(
+        req.tenantId,
+        id,
+        workspace.unitId,
+        client,
+      );
+      await getClassInUnit(req.tenantId, kelas_id, workspace.unitId, client);
 
       const existing = await client.query(
         `SELECT id, status
@@ -320,6 +436,16 @@ router.put(
       const nextStatus = status ?? existing.rows[0].status ?? "aktif";
       const wasAktif = !isSantriNonAktif(existing.rows[0].status);
       const willNonAktif = isSantriNonAktif(nextStatus);
+      const remainingMemberships = willNonAktif
+        ? await client.query(
+          `SELECT COUNT(*)::integer AS count FROM santri_units
+           WHERE tenant_id = $1 AND santri_id = $2 AND id <> $3
+             AND status = 'active' AND left_at IS NULL`,
+          [req.tenantId, id, membership.id],
+        )
+        : { rows: [{ count: 0 }] };
+      const hasOtherActiveMembership = Number(remainingMemberships.rows[0]?.count) > 0;
+      const nextGlobalStatus = willNonAktif && hasOtherActiveMembership ? "aktif" : nextStatus;
 
       const result = await client.query(
         `UPDATE santri
@@ -333,12 +459,11 @@ router.put(
              alamat = $8,
              orang_tua = $9,
              nomor_hp_ortu = $10,
-             kelas_id = $11,
-             kamar = $12,
-             foto = $13,
-             status = $14,
-             limit_harian = $15
-         WHERE id = $16 AND tenant_id = $17
+             kamar = $11,
+             foto = $12,
+             status = $13,
+             limit_harian = $14
+         WHERE id = $15 AND tenant_id = $16
           RETURNING *,
             to_char(tanggal_lahir, 'YYYY-MM-DD') AS tanggal_lahir,
             to_char(tanggal_masuk_pesantren, 'YYYY-MM-DD') AS tanggal_masuk_pesantren`,
@@ -353,10 +478,9 @@ router.put(
           alamat,
           orang_tua,
           nomor_hp_ortu,
-          kelas_id || null,
           kamar || null,
           foto,
-          nextStatus,
+          nextGlobalStatus,
           normalizedLimitHarian,
           id,
           req.tenantId,
@@ -369,7 +493,67 @@ router.put(
       }
 
       const santri = result.rows[0];
-      await ensureAlumni(client, { tenantId: req.tenantId, santri, status: nextStatus });
+      await assignClassEnrollment({
+        tenantId: req.tenantId,
+        membership,
+        kelasId: kelas_id || null,
+      }, client);
+      await syncLegacyClass(req.tenantId, id, membership, kelas_id || null, client);
+      if (willNonAktif) {
+        const membershipStatus = String(nextStatus).trim().toLowerCase() === "lulus"
+          ? "graduated"
+          : String(nextStatus).trim().toLowerCase() === "keluar" ? "left" : "inactive";
+        const enrollmentStatus = membershipStatus === "graduated"
+          ? "completed"
+          : membershipStatus === "left" ? "moved" : "cancelled";
+        await client.query(
+          `UPDATE santri_units
+           SET status = $1, left_at = COALESCE(left_at, CURRENT_DATE), is_primary = false, updated_at = NOW()
+           WHERE id = $2 AND tenant_id = $3 AND santri_id = $4`,
+          [membershipStatus, membership.id, req.tenantId, id],
+        );
+        await client.query(
+          `UPDATE santri_kelas_enrollments
+           SET status = $1, end_date = COALESCE(end_date, CURRENT_DATE), updated_at = NOW()
+           WHERE tenant_id = $2 AND santri_unit_id = $3
+             AND status = 'active' AND end_date IS NULL`,
+          [enrollmentStatus, req.tenantId, membership.id],
+        );
+        if (hasOtherActiveMembership && membership.is_primary === true) {
+          const promoted = await client.query(
+            `WITH candidate AS (
+               SELECT id FROM santri_units
+               WHERE tenant_id = $1 AND santri_id = $2
+                 AND status = 'active' AND left_at IS NULL
+               ORDER BY id
+               LIMIT 1
+             )
+             UPDATE santri_units su
+             SET is_primary = true, updated_at = NOW()
+             FROM candidate
+             WHERE su.id = candidate.id
+             RETURNING su.id`,
+            [req.tenantId, id],
+          );
+          if (promoted.rows[0]) {
+            await client.query(
+              `UPDATE santri s
+               SET kelas_id = (
+                 SELECT e.kelas_id
+                 FROM santri_kelas_enrollments e
+                 WHERE e.tenant_id = $1 AND e.santri_unit_id = $2
+                   AND e.status = 'active' AND e.end_date IS NULL
+                 ORDER BY e.id DESC LIMIT 1
+               )
+               WHERE s.id = $3 AND s.tenant_id = $1`,
+              [req.tenantId, promoted.rows[0].id, id],
+            );
+          }
+        }
+      }
+      if (!hasOtherActiveMembership) {
+        await ensureAlumni(client, { tenantId: req.tenantId, santri, status: nextGlobalStatus });
+      }
       const waliSync = await syncWaliFromSantri(client, {
         tenantId: req.tenantId,
         santri,
@@ -385,13 +569,15 @@ router.put(
       res.json({
         success: true,
         data: santri,
+        membership_status: willNonAktif ? nextStatus : "aktif",
+        identity_status: nextGlobalStatus,
         wali_sync: waliSync,
         exit_summary: exitSummary,
       });
     } catch (err) {
       await client.query("ROLLBACK");
       console.log(err);
-      res.status(500).json({ success: false, error: err.message });
+      sendScopedError(res, err);
     } finally {
       client.release();
     }
@@ -403,8 +589,25 @@ router.delete(
   ...withTenant,
   requirePermission("santri.delete"),
   async (req, res) => {
+    const client = await pool.connect();
     try {
-      const result = await pool.query(
+      await client.query("BEGIN");
+      const workspace = await resolveSantriWorkspace(req, client, { requireUnit: true });
+      await assertSantriUnitAccess(req.tenantId, req.params.id, workspace.unitId, client);
+      const memberships = await client.query(
+        `SELECT COUNT(*)::integer AS count FROM santri_units
+         WHERE tenant_id = $1 AND santri_id = $2
+           AND status = 'active' AND left_at IS NULL`,
+        [req.tenantId, req.params.id],
+      );
+      if (Number(memberships.rows[0]?.count) > 1) {
+        throw Object.assign(new Error("Identitas santri multi-unit tidak dapat dihapus dari workspace unit"), {
+          status: 409,
+          code: "MULTI_UNIT_IDENTITY_DELETE_BLOCKED",
+        });
+      }
+
+      const result = await client.query(
         `DELETE FROM santri
          WHERE id = $1 AND tenant_id = $2
          RETURNING id`,
@@ -412,13 +615,18 @@ router.delete(
       );
 
       if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
         return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
       }
 
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err) {
+      await client.query("ROLLBACK");
       console.log(err);
-      res.status(500).json({ success: false, error: err.message });
+      sendScopedError(res, err);
+    } finally {
+      client.release();
     }
   }
 );
@@ -447,34 +655,19 @@ router.get("/rfid/:uid", ...withTenant, requirePermission("santri.view"), async 
 
 router.get("/:id", ...withTenant, requirePermission("santri.view"), async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT
-         santri.*,
-         to_char(santri.tanggal_lahir, 'YYYY-MM-DD') AS tanggal_lahir,
-         to_char(santri.tanggal_masuk_pesantren, 'YYYY-MM-DD') AS tanggal_masuk_pesantren,
-         kelas.nama_kelas,
-         santri.orang_tua AS nama_wali,
-         santri.nomor_hp_ortu AS nomor_hp
-       FROM santri
-       LEFT JOIN kelas
-         ON santri.kelas_id = kelas.id
-        AND kelas.tenant_id = santri.tenant_id
-       LEFT JOIN wali_santri
-         ON santri.id = wali_santri.santri_id
-        AND wali_santri.tenant_id = santri.tenant_id
-       WHERE santri.id = $1
-         AND santri.tenant_id = $2`,
-      [req.params.id, req.tenantId]
-    );
-
-    if (result.rows.length === 0) {
+    const workspace = await resolveSantriWorkspace(req);
+    const santri = await getVisibleSantri({
+      tenantId: req.tenantId,
+      unitId: workspace.unitId,
+      santriId: req.params.id,
+    });
+    if (!santri) {
       return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
     }
-
-    res.json({ success: true, data: result.rows[0] });
+    res.json({ success: true, data: santri });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendScopedError(res, err, "Gagal memuat detail santri");
   }
 });
 

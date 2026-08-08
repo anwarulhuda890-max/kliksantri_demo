@@ -12,17 +12,19 @@ import { Table, TableScroll, TableActions } from "../components/ui/table";
 import { FormField, Input, Select, FormGrid, FormActionBar } from "../components/ui/form";
 import { exportExcel } from "../utils/exportExcel";
 import { formatNumber } from "../utils/formatCurrency";
+import { useActiveUnit } from "../context/ActiveUnitContext";
 
 function KelasPage() {
+  const { activeUnitId, activeUnit, allUnitsAllowed } = useActiveUnit();
   const [kelas, setKelas] = useState([]);
   const [namaKelas, setNamaKelas] = useState("");
-  const [units, setUnits] = useState([]);
-  const [unitId, setUnitId] = useState("");
   const [tableSearch, setTableSearch] = useState("");
 
   const getKelas = async () => {
     try {
-      const response = await api.get("/kelas");
+      const response = await api.get("/kelas", {
+        params: activeUnitId ? { unit_id: activeUnitId } : (allUnitsAllowed ? { scope: "all" } : {}),
+      });
       setKelas(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -30,13 +32,11 @@ function KelasPage() {
   };
 
   useEffect(() => {
+    // Loading classes synchronizes this page with the selected external API scope.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     getKelas();
-    api.get("/users/meta/units").then((res) => {
-      const nextUnits = res.data.data || [];
-      setUnits(nextUnits);
-      if (nextUnits[0]) setUnitId(String(nextUnits[0].id));
-    }).catch(() => {});
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUnitId]);
 
   const filteredKelas = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
@@ -48,9 +48,10 @@ function KelasPage() {
 
   const addKelas = async () => {
     try {
+      if (!activeUnitId) return;
       await api.post("/kelas", {
         nama_kelas: namaKelas,
-        unit_id: unitId || undefined,
+        unit_id: activeUnitId,
       });
 
       setNamaKelas("");
@@ -62,7 +63,7 @@ function KelasPage() {
 
   const deleteKelas = async (id) => {
     try {
-      await api.delete(`/kelas/${id}`);
+      await api.delete(`/kelas/${id}`, { params: { unit_id: activeUnitId } });
       getKelas();
     } catch (err) {
       console.error(err);
@@ -82,6 +83,10 @@ function KelasPage() {
     <AppShell title="Data Kelas" breadcrumb="Master Data / Kelas">
       <OperationalPageStyles />
       <div className="ops-page">
+        <p className="ops-page__meta">
+          Workspace: {activeUnit?.nama || (allUnitsAllowed ? "Semua Unit" : "Unit belum dipilih")}
+          {!activeUnitId && allUnitsAllowed ? " — pilih satu unit untuk mengelola kelas." : ""}
+        </p>
         <div className="ops-page__summary" style={{ gridTemplateColumns: "repeat(1, minmax(0, 240px))" }}>
           <div className="ops-page__stat">
             <span className="ops-page__stat-label">Total Kelas</span>
@@ -102,14 +107,14 @@ function KelasPage() {
                 />
               </FormField>
               <FormField label="Unit Pendidikan" htmlFor="kelas-unit" required>
-                <Select id="kelas-unit" value={unitId} onChange={(e) => setUnitId(e.target.value)}>
-                  <option value="">Pilih Unit</option>
-                  {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.nama}</option>)}
+                <Select id="kelas-unit" value={activeUnitId || ""} disabled>
+                  <option value="">Pilih unit melalui selector workspace</option>
+                  {activeUnit ? <option value={activeUnit.id}>{activeUnit.nama}</option> : null}
                 </Select>
               </FormField>
             </FormGrid>
             <FormActionBar className="form-action-bar-v3--compact">
-              <Button variant="primary" onClick={addKelas}>
+              <Button variant="primary" onClick={addKelas} disabled={!activeUnitId}>
                 Tambah
               </Button>
             </FormActionBar>
@@ -181,7 +186,7 @@ function KelasPage() {
                         <td>{item.unit_nama || "—"}</td>
                         <td className="table-v3__cell--actions">
                           <TableActions
-                            items={[{ type: "delete", onClick: () => deleteKelas(item.id) }]}
+                            items={activeUnitId ? [{ type: "delete", onClick: () => deleteKelas(item.id) }] : []}
                           />
                         </td>
                       </tr>

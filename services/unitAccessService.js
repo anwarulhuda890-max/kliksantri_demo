@@ -1,6 +1,9 @@
 const pool = require("../db");
 
-const ALL_UNIT_ROLES = new Set(["superadmin", "pimpinan_yayasan"]);
+// Final access model: only the tenant superadmin owns an implicit all-unit scope.
+// Every other tenant role, including read-only leadership roles, must be assigned
+// explicitly through user_unit_scope.
+const ALL_UNIT_ROLES = new Set(["superadmin"]);
 
 function accessError(message, status = 403, code = "UNIT_ACCESS_DENIED") {
   const error = new Error(message);

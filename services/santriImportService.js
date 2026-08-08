@@ -2,6 +2,7 @@ const XLSX = require("xlsx");
 const pool = require("../db");
 const waliAppService = require("./waliAppService");
 const { syncWaliFromSantri } = require("./waliSyncService");
+const { createMembershipWithEnrollment } = require("./santriUnitService");
 
 const TEMPLATE_HEADERS = [
   "nama",
@@ -134,10 +135,10 @@ function parseWorkbookBuffer(buffer) {
   return XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
 }
 
-async function loadKelasMap(tenantId) {
+async function loadKelasMap(tenantId, unitId) {
   const { rows } = await pool.query(
-    `SELECT id, nama_kelas FROM kelas WHERE tenant_id = $1`,
-    [tenantId]
+    `SELECT id, unit_id, nama_kelas FROM kelas WHERE tenant_id = $1 AND unit_id = $2`,
+    [tenantId, unitId]
   );
   const map = new Map();
   for (const row of rows) {
@@ -246,9 +247,15 @@ function validateRow(mapped, context) {
   };
 }
 
-async function previewImport(tenantId, buffer) {
+async function previewImport(tenantId, buffer, { unitId } = {}) {
+  if (!Number.isInteger(Number(unitId))) {
+    throw Object.assign(new Error("Unit aktif wajib dipilih untuk import"), {
+      status: 400,
+      code: "UNIT_REQUIRED",
+    });
+  }
   const rawRows = parseWorkbookBuffer(buffer);
-  const kelasMap = await loadKelasMap(tenantId);
+  const kelasMap = await loadKelasMap(tenantId, Number(unitId));
   const existingNis = await loadExistingNisSet(tenantId);
   const fileNis = new Set();
 
@@ -295,6 +302,7 @@ async function previewImport(tenantId, buffer) {
     total_rows: rows.length,
     valid_rows: validRows,
     invalid_rows: invalidRows,
+    unit_id: Number(unitId),
     rows,
   };
 }
@@ -316,7 +324,13 @@ async function validateCommitRow(tenantId, rowData, context) {
   return validateRow(mapped, context);
 }
 
-async function commitImport(tenantId, inputRows) {
+async function commitImport(tenantId, inputRows, { unitId } = {}) {
+  if (!Number.isInteger(Number(unitId))) {
+    throw Object.assign(new Error("Unit aktif wajib dipilih untuk import"), {
+      status: 400,
+      code: "UNIT_REQUIRED",
+    });
+  }
   if (!Array.isArray(inputRows) || inputRows.length === 0) {
     return {
       success: false,
@@ -324,7 +338,8 @@ async function commitImport(tenantId, inputRows) {
     };
   }
 
-  const kelasMap = await loadKelasMap(tenantId);
+  const normalizedUnitId = Number(unitId);
+  const kelasMap = await loadKelasMap(tenantId, normalizedUnitId);
   const existingNis = await loadExistingNisSet(tenantId);
   const fileNis = new Set();
 
@@ -397,6 +412,16 @@ async function commitImport(tenantId, inputRows) {
       );
 
       const santri = insertResult.rows[0];
+
+      await createMembershipWithEnrollment({
+        tenant_id: tenantId,
+        santri_id: santri.id,
+        unit_id: normalizedUnitId,
+        unit_student_number: data.nis || null,
+        joined_at: data.tanggal_masuk_pesantren || null,
+        is_primary: true,
+        kelas_id: data.kelas_id,
+      }, client);
 
       await syncWaliFromSantri(client, {
         tenantId,

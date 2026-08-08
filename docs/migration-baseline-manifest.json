@@ -587,6 +587,15 @@
       "notes": "additive session invalidation; apply before deploying token-version-aware backend",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 160
+    },
+    {
+      "filename": "071_backfill_canonical_santri_unit_membership.sql",
+      "checksum": "db99c1948382d993f5438b55b3ca3ae66e6ca484116cb244d82c92888d7d088f",
+      "status": "NOT_APPLIED",
+      "evidence": "canonical backfill and review ledger are not present",
+      "notes": "apply after 064; deterministic santri.kelas_id relations only, ambiguous rows remain REVIEW_REQUIRED",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 170
     }
   ]
 }

@@ -8,7 +8,7 @@ import {
 } from "../ui/table";
 import api from "../../services/api";
 
-function SantriImportModal({ open, onClose, onImported }) {
+function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
   const fileInputRef = useRef(null);
   const [step, setStep] = useState(1);
   const [file, setFile] = useState(null);
@@ -62,6 +62,7 @@ function SantriImportModal({ open, onClose, onImported }) {
       formData.append("file", file);
       const res = await api.post("/santri/import/preview", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        params: { unit_id: unitId },
       });
       setPreview(res.data);
       setStep(2);
@@ -85,7 +86,10 @@ function SantriImportModal({ open, onClose, onImported }) {
     setError("");
 
     try {
-      const res = await api.post("/santri/import/commit", { rows: validRows });
+      const res = await api.post("/santri/import/commit", {
+        rows: validRows,
+        unit_id: unitId,
+      });
       setCommitResult(res.data);
       setStep(3);
       if (res.data.imported > 0 && onImported) {
@@ -114,7 +118,8 @@ function SantriImportModal({ open, onClose, onImported }) {
         {step === 1 ? (
           <div>
             <p style={hintStyle}>
-              Upload file Excel (.xlsx, maks. 5MB). Kolom tenant_id akan diabaikan.
+              Upload file Excel (.xlsx, maks. 5MB) untuk unit <strong>{unitName || "aktif"}</strong>.
+              Kolom tenant_id akan diabaikan.
             </p>
             <input
               ref={fileInputRef}

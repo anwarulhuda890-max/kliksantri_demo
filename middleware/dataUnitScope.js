@@ -19,13 +19,17 @@ async function getScopedUnitIds(req, client = pool) {
 }
 
 async function assertSantriInScopedUnit(req, santriId, client = pool) {
-  const kelasIds = await getScopedKelasIds(req, client);
-  if (!kelasIds) return { ok: true };
+  const unitIds = await getScopedUnitIds(req, client);
+  if (!unitIds) return { ok: true };
   const result = await client.query(
     `SELECT s.id
      FROM santri s
-     WHERE s.id = $1 AND s.tenant_id = $2 AND s.kelas_id = ANY($3::int[])`,
-    [santriId, req.tenantId, kelasIds],
+     JOIN santri_units su
+       ON su.santri_id = s.id AND su.tenant_id = s.tenant_id
+      AND su.status = 'active' AND su.left_at IS NULL
+     WHERE s.id = $1 AND s.tenant_id = $2 AND su.unit_id = ANY($3::int[])
+     LIMIT 1`,
+    [santriId, req.tenantId, unitIds],
   );
   return result.rows.length
     ? { ok: true }

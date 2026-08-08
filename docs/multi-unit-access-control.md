@@ -11,7 +11,7 @@ Resolver tunggal berada di `services/unitAccessService.js` dan menyediakan:
 - `assertUnitAccess(user, unitId)`
 - `resolveActiveUnit(request)`
 
-Resolver memverifikasi user pada tenant aktif, unit milik tenant yang sama, unit aktif, serta assignment aktif. Hanya `superadmin` dan `pimpinan_yayasan` yang eksplisit all-unit. `pimpinan_yayasan` tetap read-only sesuai permission.
+Resolver memverifikasi user pada tenant aktif, unit milik tenant yang sama, unit aktif, serta assignment aktif. Hanya `superadmin` tenant yang mendapat implicit all-unit. Semua role lain, termasuk `pimpinan_yayasan`, wajib mempunyai assignment aktif di `user_unit_scope`; permission tetap menentukan read/write di dalam scope tersebut.
 
 ## Fail-closed
 
