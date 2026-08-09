@@ -39,21 +39,30 @@ async function run() {
     );
     await client.query("ROLLBACK");
     const checks = result.rows[0];
-    const pass = checks.active_phone_collisions === 0
-      && checks.production_wali_without_account === 0
-      && checks.canonical_account_status === "active"
-      && checks.legacy_account_status === "inactive"
-      && checks.mt8_tenant_status === "inactive"
+    const mt8Archived = checks.mt8_tenant_status === "inactive"
       && checks.mt8_wali_retained === 1
       && checks.mt8_login_accounts === 0
       && checks.mt8_nonarchived_santri === 0
       && checks.mt8_nonarchived_guru === 0
       && checks.mt8_nonarchived_users === 0
       && checks.mt8_active_units === 0;
+    const mt8NotPresent = checks.mt8_tenant_status == null
+      && checks.mt8_wali_retained === 0
+      && checks.mt8_login_accounts === 0
+      && checks.mt8_nonarchived_santri === 0
+      && checks.mt8_nonarchived_guru === 0
+      && checks.mt8_nonarchived_users === 0
+      && checks.mt8_active_units === 0;
+    const pass = checks.active_phone_collisions === 0
+      && checks.production_wali_without_account === 0
+      && checks.canonical_account_status === "active"
+      && checks.legacy_account_status === "inactive"
+      && (mt8Archived || mt8NotPresent);
     console.log(JSON.stringify({
       marker: "wali-identity-resolution-audit",
       mode: "READ_ONLY",
       status: pass ? "PASS" : "BLOCKED",
+      mt8_resolution: mt8Archived ? "LOGICALLY_ARCHIVED" : mt8NotPresent ? "NOT_PRESENT" : "UNRESOLVED",
       checks,
     }, null, 2));
     if (!pass) process.exitCode = 1;

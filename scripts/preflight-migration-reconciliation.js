@@ -130,7 +130,12 @@ async function run() {
     }
 
     add(checks, "alumni_backfill_candidates", await count(client,
-      `SELECT COUNT(*) FROM santri WHERE LOWER(TRIM(COALESCE(status,''))) IN ('lulus','keluar')`), "RECONCILIATION_REQUIRED");
+      `SELECT COUNT(*) FROM santri s
+       WHERE LOWER(TRIM(COALESCE(s.status,''))) IN ('lulus','keluar')
+         AND NOT EXISTS (
+           SELECT 1 FROM alumni a
+           WHERE a.tenant_id=s.tenant_id AND a.santri_id=s.id
+         )`), "RECONCILIATION_REQUIRED");
 
     const expectedPermissionGrants = await count(client,
       `SELECT COUNT(*) FROM (VALUES

@@ -71,8 +71,8 @@
     {
       "filename": "009_guru.sql",
       "checksum": "d9b1532ce89630fb570ee4c1527421594c1f25161411323c03255893acbae671",
-      "status": "DRIFTED",
-      "evidence": "16/17 found; 1 missing; 4 drift",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "16/17 found; 1 missing; 0 drift",
       "notes": "replaced by 065_reconcile_core_constraints.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "065_reconcile_core_constraints.sql"
@@ -98,8 +98,8 @@
     {
       "filename": "012_guru_final.sql",
       "checksum": "69392080f78a79d8bc2e2df55f5711d0b4b29b25997e6ad05a9110ded9fa06a5",
-      "status": "DRIFTED",
-      "evidence": "23/25 found; 2 missing; 4 drift",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "23/25 found; 2 missing; 0 drift",
       "notes": "replaced by 065_reconcile_core_constraints.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "065_reconcile_core_constraints.sql"
@@ -405,8 +405,8 @@
     {
       "filename": "050_user_kelas_scope.sql",
       "checksum": "2c21fbd85a92832edd61615a336237fa8a535b4f6132e0c3ebff8a5c9b44fe2c",
-      "status": "NOT_APPLIED",
-      "evidence": "0/14 found; 14 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "14/14 found; 0 missing; 0 drift",
       "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "066_reconcile_missing_operational_schema.sql"
@@ -414,8 +414,8 @@
     {
       "filename": "051_wali_home_links.sql",
       "checksum": "1c1bd3a3ec87531b8ec0428986f06841bc99b9eb8a50c07c08e2f10d6d058849",
-      "status": "NOT_APPLIED",
-      "evidence": "0/16 found; 16 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "16/16 found; 0 missing; 0 drift",
       "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "066_reconcile_missing_operational_schema.sql"
@@ -432,8 +432,8 @@
     {
       "filename": "053_platform_website_settings.sql",
       "checksum": "ef5ad475fea3b85fbe3c621ec1487a4b2647f565eee485d02cfa807f1d6e8e87",
-      "status": "NOT_APPLIED",
-      "evidence": "0/13 found; 13 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "13/13 found; 0 missing; 0 drift",
       "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "066_reconcile_missing_operational_schema.sql"
@@ -441,8 +441,8 @@
     {
       "filename": "054_tenant_domains_foundation.sql",
       "checksum": "d21f28a3f6776e30e7524f078566b79e249e9acebe6f94f95e63fa8a4173b6d9",
-      "status": "NOT_APPLIED",
-      "evidence": "0/30 found; 30 missing; 0 drift",
+      "status": "DRIFTED",
+      "evidence": "30/30 found; 0 missing; 1 drift",
       "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "066_reconcile_missing_operational_schema.sql"
@@ -450,8 +450,8 @@
     {
       "filename": "055_custom_tenant_domains.sql",
       "checksum": "e74ccf8a0b9b113e85d2def69155714a9520af14eb2d2ad7f6a7ad7a26cddd98",
-      "status": "NOT_APPLIED",
-      "evidence": "0/2 found; 2 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
       "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "066_reconcile_missing_operational_schema.sql"
@@ -459,8 +459,8 @@
     {
       "filename": "056_wali_token_version.sql",
       "checksum": "51220cd606c19885ae2c7110e308191b0a58977599777cceae318666e78449f1",
-      "status": "NOT_APPLIED",
-      "evidence": "0/2 found; 2 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
       "notes": "replaced by 066_reconcile_missing_operational_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "066_reconcile_missing_operational_schema.sql"
@@ -468,8 +468,8 @@
     {
       "filename": "057_mata_pelajaran_kelas.sql",
       "checksum": "59e65a0a2be3b87330cbeccb61ce245c0ca4475ebc8be0d94b8d9f284dbc49b2",
-      "status": "NOT_APPLIED",
-      "evidence": "0/23 found; 23 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "23/23 found; 0 missing; 0 drift",
       "notes": "replaced by 067_reconcile_academic_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "067_reconcile_academic_schema.sql"
@@ -477,8 +477,8 @@
     {
       "filename": "058_santri_kamar.sql",
       "checksum": "e7b503596146f5b5cce07a17c30030ead00d60dcf779bc1b476ded0dca1cd624",
-      "status": "NOT_APPLIED",
-      "evidence": "0/2 found; 2 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "2/2 found; 0 missing; 0 drift",
       "notes": "replaced by 067_reconcile_academic_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "067_reconcile_academic_schema.sql"
@@ -486,8 +486,8 @@
     {
       "filename": "059_alumni.sql",
       "checksum": "fd225c68677c6225c69b3bf35dd93a3e8acca2d3d0a96a66bf8f59c5065ef80c",
-      "status": "NOT_APPLIED",
-      "evidence": "0/24 found; 24 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "24/24 found; 0 missing; 0 drift",
       "notes": "replaced by 067_reconcile_academic_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "067_reconcile_academic_schema.sql"
@@ -495,8 +495,8 @@
     {
       "filename": "060_alumni_kelas_terakhir.sql",
       "checksum": "4368072b6b08750064cd564f5e2304738897cbabf4c1464b99825b2c7075d620",
-      "status": "NOT_APPLIED",
-      "evidence": "0/1 found; 1 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "1/1 found; 0 missing; 0 drift",
       "notes": "replaced by 067_reconcile_academic_schema.sql",
       "recommended_action": "APPLY_RECONCILIATION",
       "replaced_by": "067_reconcile_academic_schema.sql"
@@ -537,8 +537,8 @@
     {
       "filename": "065_reconcile_core_constraints.sql",
       "checksum": "e250a1a7d000576541bc96d039c8f7cc06778e9e20c69dedef17e1530d57c0b8",
-      "status": "NOT_APPLIED",
-      "evidence": "0/7 found; 7 missing; 0 drift",
+      "status": "PARTIALLY_APPLIED",
+      "evidence": "5/7 found; 2 missing; 0 drift",
       "notes": "forward migration; execute by manifest order",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 100
@@ -546,8 +546,8 @@
     {
       "filename": "066_reconcile_missing_operational_schema.sql",
       "checksum": "a7cd19decdeca963104b8bea2c41a0c11b38e247bced9b408835c69e133ecff5",
-      "status": "NOT_APPLIED",
-      "evidence": "0/77 found; 77 missing; 0 drift",
+      "status": "DRIFTED",
+      "evidence": "69/77 found; 8 missing; 8 drift",
       "notes": "forward migration; execute by manifest order",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 110
@@ -555,8 +555,8 @@
     {
       "filename": "067_reconcile_academic_schema.sql",
       "checksum": "9ffe076c0c5af4ce1ad7026d5bc61cefd9644ab953c97a092b98c2d53bf57d13",
-      "status": "NOT_APPLIED",
-      "evidence": "0/53 found; 53 missing; 0 drift",
+      "status": "DRIFTED",
+      "evidence": "43/53 found; 10 missing; 8 drift",
       "notes": "forward migration; execute by manifest order",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 120
@@ -581,9 +581,9 @@
     },
     {
       "filename": "070_admin_token_version.sql",
-      "checksum": "b58ef912de6d587f1a706ab781b06d66cb32ea144afa76872d9da6d5d8ee5ca4",
+      "checksum": "28f08d42557a3dfbdf5d3e80efa557cb638d2607df469b129e4bad51b5d7e9c3",
       "status": "NOT_APPLIED",
-      "evidence": "users.token_version and invalidation triggers are not present",
+      "evidence": "0/6 found; 6 missing; 0 drift",
       "notes": "additive session invalidation; apply before deploying token-version-aware backend",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 160
