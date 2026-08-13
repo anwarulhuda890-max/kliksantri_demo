@@ -528,8 +528,8 @@
     {
       "filename": "064_multi_unit_foundation.sql",
       "checksum": "1fad0cf4da6589c824db0abd6b2fd77772fed7854623a5789fb88f4c05887226",
-      "status": "NOT_APPLIED",
-      "evidence": "0/81 found; 81 missing; 0 drift",
+      "status": "VERIFIED_APPLIED",
+      "evidence": "81/81 found; 0 missing; 0 drift",
       "notes": "forward migration; execute by manifest order",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 150
