@@ -36,9 +36,14 @@ router.get("/presets/:unitType", requirePermission("unit.view"), (req, res) => {
   res.json({ success: true, data: preview });
 });
 
-router.get("/", requirePermission("unit.view"), async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const allowed = await getAllowedUnitIds(req.user, req.tenantId);
+    if (Array.isArray(allowed) && allowed.length === 0) {
+      const error = new Error("Ruang kerja unit belum diassign");
+      Object.assign(error, { status: 403, code: "UNIT_SCOPE_UNASSIGNED" });
+      throw error;
+    }
     const params = [req.tenantId];
     let scope = "";
     if (allowed !== null) {
@@ -55,7 +60,7 @@ router.get("/", requirePermission("unit.view"), async (req, res) => {
   } catch (error) { sendError(res, error); }
 });
 
-router.get("/:unitId/features", requirePermission("unit.view"), async (req, res) => {
+router.get("/:unitId/features", async (req, res) => {
   try {
     const unit = await assertUnitAccess(req.user, req.params.unitId, req.tenantId);
     const features = await getEffectiveUnitFeatures(req.tenantId, unit.id);

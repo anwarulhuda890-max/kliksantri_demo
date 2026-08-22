@@ -14,6 +14,7 @@ import DashboardSekretaris from "../components/dashboard/DashboardSekretaris";
 import DashboardKesehatanHariIni from "../components/dashboard/DashboardKesehatanHariIni";
 import { getUser } from "../utils/storage";
 import { hasPermission } from "../utils/hasPermission";
+import { useActiveUnit } from "../context/ActiveUnitContext";
 
 const DEFAULT_SHORTCUTS = [
   { permission: "absensi.view", label: "Absensi Santri", path: "/absensi" },
@@ -26,6 +27,16 @@ const DEFAULT_SHORTCUTS = [
 
 function DashboardPage() {
   const user = getUser();
+  const {
+    activeUnitId,
+    activeUnit,
+    allUnitsAllowed,
+    loading: unitLoading,
+    error: unitError,
+  } = useActiveUnit();
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+  const [summaryReady, setSummaryReady] = useState(false);
 
   const [summary, setSummary] = useState({
     total_santri: 0,
@@ -75,20 +86,37 @@ function DashboardPage() {
     keluar: Number(item.keluar),
   }));
 
-  const getSummary = async () => {
-    try {
-      const response = await api.get("/dashboard/summary");
-      setSummary(response.data.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const workspaceReady = !unitLoading && !unitError && (allUnitsAllowed || Boolean(activeUnitId));
+  const workspaceUnavailable = !unitLoading && !unitError && !allUnitsAllowed && !activeUnitId;
+  const dashboardReady = canViewDashboardData && workspaceReady && summaryReady && !summaryError;
 
   useEffect(() => {
-    if (canViewDashboardData) {
-      getSummary();
+    if (!canViewDashboardData || !workspaceReady) return undefined;
+    let cancelled = false;
+
+    async function loadSummary() {
+      setSummaryLoading(true);
+      setSummaryError("");
+      setSummaryReady(false);
+      try {
+        const params = activeUnitId ? { unit_id: activeUnitId } : { scope: "all" };
+        const response = await api.get("/dashboard/summary", { params });
+        if (!cancelled) {
+          setSummary(response.data.data);
+          setSummaryReady(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSummaryError(err.response?.data?.error || "Dashboard workspace belum dapat dimuat");
+        }
+      } finally {
+        if (!cancelled) setSummaryLoading(false);
+      }
     }
-  }, [canViewDashboardData]);
+
+    loadSummary();
+    return () => { cancelled = true; };
+  }, [activeUnitId, canViewDashboardData, workspaceReady]);
 
   return (
     <AppShell title="Dashboard" breadcrumb="Dashboard">
@@ -97,6 +125,29 @@ function DashboardPage() {
         <section className="dashboard-section dashboard-section--hero">
           <DashboardHero />
         </section>
+
+        {canViewDashboardData && workspaceReady ? (
+          <section className="dashboard-section">
+            <div style={workspacePanelStyle}>
+              Workspace aktif: {activeUnit?.nama || "Semua Unit"}
+            </div>
+          </section>
+        ) : null}
+
+        {canViewDashboardData && (unitError || workspaceUnavailable || summaryError) ? (
+          <section className="dashboard-section">
+            <div style={unavailablePanelStyle}>
+              <strong>Dashboard tidak tersedia.</strong>
+              <span>{unitError || summaryError || "Ruang kerja unit belum dapat dimuat"}</span>
+            </div>
+          </section>
+        ) : null}
+
+        {canViewDashboardData && (unitLoading || summaryLoading) ? (
+          <section className="dashboard-section">
+            <div style={loadingPanelStyle}>Memuat ruang kerja unit...</div>
+          </section>
+        ) : null}
 
         {!canViewDashboardData ? (
           <section className="dashboard-section dashboard-section--metrics">
@@ -124,7 +175,7 @@ function DashboardPage() {
           </section>
         ) : null}
 
-        {canViewDashboardData && role === "superadmin" && (
+        {dashboardReady && role === "superadmin" && (
           <>
           <section className="dashboard-section dashboard-section--metrics">
             <DashboardMetrics summary={summary} />
@@ -151,15 +202,15 @@ function DashboardPage() {
           </>
         )}
 
-        {canViewDashboardData && role === "keuangan" && <DashboardKeuangan summary={summary} />}
+        {dashboardReady && role === "keuangan" && <DashboardKeuangan summary={summary} />}
 
-        {canViewDashboardData && role === "pendidikan" && <DashboardPendidikan summary={summary} />}
+        {dashboardReady && role === "pendidikan" && <DashboardPendidikan summary={summary} />}
 
-        {canViewDashboardData && role === "keamanan" && <DashboardKeamanan summary={summary} />}
+        {dashboardReady && role === "keamanan" && <DashboardKeamanan summary={summary} />}
 
-        {canViewDashboardData && role === "sekretaris" && <DashboardSekretaris summary={summary} />}
+        {dashboardReady && role === "sekretaris" && <DashboardSekretaris summary={summary} />}
 
-        {canViewDashboardData && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
+        {dashboardReady && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
           <section className="dashboard-section dashboard-section--metrics">
             <DashboardMetrics summary={summary} />
           </section>
@@ -212,6 +263,33 @@ const shortcutLinkStyle = {
 const shortcutEmptyStyle = {
   color: "var(--text-secondary)",
   fontSize: "14px",
+};
+
+const workspacePanelStyle = {
+  padding: "12px 16px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  color: "var(--text-primary)",
+  fontWeight: 700,
+};
+
+const unavailablePanelStyle = {
+  display: "grid",
+  gap: "6px",
+  padding: "18px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--danger, #dc2626)",
+  background: "var(--surface)",
+  color: "var(--text-primary)",
+};
+
+const loadingPanelStyle = {
+  padding: "18px",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  color: "var(--text-secondary)",
 };
 
 export default DashboardPage;
