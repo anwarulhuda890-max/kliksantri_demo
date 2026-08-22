@@ -10,7 +10,32 @@ function AppShell({ children, title, description, breadcrumb }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isDashboard = location.pathname === "/dashboard";
   const showBanner = !isDashboard;
-  const showUnitFoundation = isDashboard || location.pathname === "/units";
+  const unitAwarePaths = new Set([
+    "/dashboard",
+    "/units",
+    "/santri",
+    "/kelas",
+    "/guru",
+    "/mata-pelajaran",
+    "/absensi",
+    "/absensi-guru",
+    "/nilai",
+    "/hafalan",
+    "/buku-kas",
+    "/perizinan",
+    "/pelanggaran",
+    "/kesehatan",
+    "/pengumuman",
+    "/pembayaran",
+    "/sahriyah",
+    "/sahriyah-setting",
+    "/rfid-dashboard",
+    "/rfid-topup",
+    "/wallet-withdrawal",
+    "/rfid-mutasi",
+    "/rfid-transactions",
+  ]);
+  const showUnitFoundation = unitAwarePaths.has(location.pathname);
 
   useEffect(() => {
     if (!drawerOpen) return undefined;
