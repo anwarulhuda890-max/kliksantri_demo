@@ -219,6 +219,9 @@ require("./middleware/requirePermission");
 const requireTenantFeature =
   require("./middleware/requireTenantFeature");
 
+const requireUnitFeature =
+  require("./middleware/requireUnitFeature");
+
 const blockWriteUnlessPermission =
 require("./middleware/blockWriteUnlessPermission");
 
@@ -428,6 +431,7 @@ app.use(
   "/pembayaran",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("pembayaran"),
   requirePermission("pembayaran.view"),
   pembayaranRoutes
 );
@@ -444,6 +448,7 @@ app.use(
   "/absensi",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("absensi"),
   requirePermission("absensi.view"),
   absensiRoutes
 );
@@ -452,6 +457,7 @@ app.use(
   "/perizinan",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("perizinan"),
   requirePermission("perizinan.view"),
   perizinanRoutes
 );
@@ -460,6 +466,7 @@ app.use(
   "/kesehatan",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("kesehatan"),
   requirePermission("kesehatan.view"),
   kesehatanRoutes
 );
@@ -468,6 +475,7 @@ app.use(
   "/pelanggaran",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("pelanggaran"),
   requirePermission("pelanggaran.view"),
   pelanggaranRoutes
 );
@@ -476,6 +484,7 @@ app.use(
   "/hafalan",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("hafalan"),
   requirePermission("hafalan.view"),
   hafalanRoutes
 );
@@ -484,6 +493,7 @@ app.use(
   "/nilai",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("nilai"),
   requirePermission("nilai.view"),
   nilaiRoutes
 );
@@ -491,6 +501,7 @@ app.use(
   "/mata-pelajaran",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("mata_pelajaran"),
   requirePermission("nilai.view"),
   mataPelajaranRoutes
 );
@@ -499,6 +510,7 @@ app.use(
   "/pengumuman",
   authMiddleware,
   tenantMiddleware,
+  requireUnitFeature("pengumuman"),
   requirePermission("pengumuman.view"),
   pengumumanRoutes
 );
@@ -596,6 +608,7 @@ app.use(
 authMiddleware,
 tenantMiddleware,
 requireTenantFeature("sahriyah"),
+requireUnitFeature("sahriyah"),
 requirePermission("sahriyah.view"),
 sahriyahRoutes
 );
@@ -605,6 +618,7 @@ app.use(
 authMiddleware,
 tenantMiddleware,
 requireTenantFeature("sahriyah"),
+requireUnitFeature("sahriyah"),
 requirePermission("sahriyah.manage"),
 sahriyahSettingRoutes
 );

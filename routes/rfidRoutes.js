@@ -4,6 +4,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const tenantMiddleware = require("../middleware/tenantMiddleware");
 const requirePermission = require("../middleware/requirePermission");
 const requireTenantFeature = require("../middleware/requireTenantFeature");
+const requireUnitFeature = require("../middleware/requireUnitFeature");
 const deviceAuthMiddleware = require("../middleware/deviceAuthMiddleware");
 const rfidController = require("../controllers/rfidController");
 const walletController = require("../controllers/walletController");
@@ -13,6 +14,7 @@ const adminWalletView = [
   authMiddleware,
   tenantMiddleware,
   requireWalletFeature,
+  requireUnitFeature("wallet"),
   requirePermission.requireAnyPermission(["wallet.view", "rfid.view"]),
 ];
 
@@ -20,6 +22,7 @@ const adminWalletManage = [
   authMiddleware,
   tenantMiddleware,
   requireWalletFeature,
+  requireUnitFeature("wallet"),
   requirePermission.requireAnyPermission(["wallet.manage", "rfid.manage"]),
 ];
 
@@ -27,6 +30,7 @@ const adminRfidManage = [
   authMiddleware,
   tenantMiddleware,
   requireTenantFeature("rfid"),
+  requireUnitFeature("rfid"),
   requirePermission("rfid.manage"),
 ];
 

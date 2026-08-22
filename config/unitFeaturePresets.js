@@ -1,15 +1,15 @@
 const IMPLEMENTED_FEATURES = new Set([
   "santri", "guru", "kelas", "absensi", "mata_pelajaran", "nilai",
   "hafalan", "pelanggaran", "perizinan", "kesehatan", "sahriyah",
-  "pembayaran", "rfid", "pengumuman",
+  "pembayaran", "wallet", "rfid", "pengumuman",
 ]);
 
 const PRESETS = {
-  PESANTREN: ["santri", "guru", "kelas", "absensi", "hafalan", "pelanggaran", "perizinan", "kesehatan", "sahriyah", "pembayaran", "rfid", "asrama", "pengumuman"],
-  PAUD: ["santri", "guru", "kelas", "absensi", "perkembangan_anak", "pembayaran", "pengumuman"],
-  TK: ["santri", "guru", "kelas", "absensi", "perkembangan_anak", "pembayaran", "pengumuman"],
-  SEKOLAH: ["santri", "guru", "kelas", "mata_pelajaran", "absensi", "nilai", "ujian", "pembayaran", "pengumuman"],
-  MADIN: ["santri", "guru", "kelas", "absensi", "nilai", "hafalan", "pembayaran", "pengumuman"],
+  PESANTREN: ["santri", "guru", "kelas", "absensi", "hafalan", "pelanggaran", "perizinan", "kesehatan", "sahriyah", "pembayaran", "wallet", "rfid", "asrama", "pengumuman"],
+  PAUD: ["santri", "guru", "kelas", "absensi", "perkembangan_anak", "pembayaran", "wallet", "pengumuman"],
+  TK: ["santri", "guru", "kelas", "absensi", "perkembangan_anak", "pembayaran", "wallet", "pengumuman"],
+  SEKOLAH: ["santri", "guru", "kelas", "mata_pelajaran", "absensi", "nilai", "ujian", "pembayaran", "wallet", "pengumuman"],
+  MADIN: ["santri", "guru", "kelas", "absensi", "nilai", "hafalan", "pembayaran", "wallet", "pengumuman"],
   CUSTOM: [],
 };
 

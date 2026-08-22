@@ -3,10 +3,11 @@ const pool = require("../db");
 const authMiddleware = require("../middleware/authMiddleware");
 const tenantMiddleware = require("../middleware/tenantMiddleware");
 const requirePermission = require("../middleware/requirePermission");
+const requireUnitFeature = require("../middleware/requireUnitFeature");
 const { assertUnitAccess, resolveActiveUnit } = require("../services/unitAccessService");
 
 const router = express.Router();
-const withTenant = [authMiddleware, tenantMiddleware];
+const withTenant = [authMiddleware, tenantMiddleware, requireUnitFeature("kelas")];
 
 function sendError(res, error) {
   const status = Number(error.status) || 500;

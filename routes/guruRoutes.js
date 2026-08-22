@@ -4,13 +4,14 @@ const pool = require("../db");
 const authMiddleware = require("../middleware/authMiddleware");
 const tenantMiddleware = require("../middleware/tenantMiddleware");
 const requirePermission = require("../middleware/requirePermission");
+const requireUnitFeature = require("../middleware/requireUnitFeature");
 const {
   getGuruInUnit,
   resolveAcademicUnit,
   sendAcademicError,
 } = require("../services/academicUnitService");
 
-const withTenant = [authMiddleware, tenantMiddleware];
+const withTenant = [authMiddleware, tenantMiddleware, requireUnitFeature("guru")];
 
 console.log("GURU ROUTES LOADED");
 

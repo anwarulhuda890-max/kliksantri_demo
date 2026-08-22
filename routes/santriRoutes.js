@@ -4,6 +4,7 @@ const pool = require("../db");
 const authMiddleware = require("../middleware/authMiddleware");
 const tenantMiddleware = require("../middleware/tenantMiddleware");
 const requirePermission = require("../middleware/requirePermission");
+const requireUnitFeature = require("../middleware/requireUnitFeature");
 const { syncWaliFromSantri } = require("../services/waliSyncService");
 const {
   getOperationalChecklist,
@@ -31,7 +32,7 @@ const {
 } = require("../services/santriImportService");
 
 const router = express.Router();
-const withTenant = [authMiddleware, tenantMiddleware];
+const withTenant = [authMiddleware, tenantMiddleware, requireUnitFeature("santri")];
 
 function normalizeLimitHarian(value) {
   if (value === null) return null;
