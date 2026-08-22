@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("node:crypto");
 const router = express.Router();
 const pool = require("../db");
 const {
@@ -144,6 +145,105 @@ function buildPembayaranFilters(tenantId, query, access) {
 
 function isStatusLunas(status) {
   return String(status || "").trim().toLowerCase() === "lunas";
+}
+
+function buildPaymentSettlementKey(pembayaranId, requestKey = null) {
+  const explicit = String(requestKey || "").trim();
+  return explicit
+    ? `pembayaran:${pembayaranId}:${explicit}`
+    : `pembayaran:${pembayaranId}:${crypto.randomUUID()}`;
+}
+
+async function findPaymentDetailBySettlementKey(client, tenantId, settlementKey) {
+  if (!settlementKey) return null;
+  const { rows } = await client.query(
+    `SELECT id, pembayaran_id, nominal, unit_id, settlement_buku_kas_id
+     FROM pembayaran_detail
+     WHERE tenant_id = $1 AND settlement_idempotency_key = $2
+     LIMIT 1`,
+    [tenantId, settlementKey],
+  );
+  return rows[0] || null;
+}
+
+async function postPembayaranToBukuKas(client, { tenantId, pembayaran, detail, actorUserId, petugas }) {
+  const settlementKey = detail.settlement_idempotency_key;
+  const { rows } = await client.query(
+    `INSERT INTO buku_kas (
+       tanggal, jenis, kategori, keterangan, nominal, petugas,
+       actor_user_id, tenant_id, unit_id, source, idempotency_key
+     )
+     VALUES (
+       COALESCE($1::date, CURRENT_DATE), 'Masuk', 'Pembayaran',
+       $2, $3, $4, $5, $6, $7, 'pembayaran', $8
+     )
+     ON CONFLICT (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO UPDATE
+       SET idempotency_key = EXCLUDED.idempotency_key
+     RETURNING id, unit_id, nominal`,
+    [
+      detail.tanggal || null,
+      `Pembayaran ${pembayaran.nama_tagihan || "tagihan"} #${pembayaran.id}`,
+      Number(detail.nominal),
+      petugas || null,
+      actorUserId || null,
+      tenantId,
+      Number(pembayaran.unit_id),
+      settlementKey,
+    ],
+  );
+  const cash = rows[0];
+  await client.query(
+    `UPDATE pembayaran_detail
+     SET settlement_buku_kas_id = $1
+     WHERE tenant_id = $2 AND id = $3`,
+    [cash.id, tenantId, detail.id],
+  );
+  await client.query(
+    `UPDATE pembayaran
+     SET settlement_buku_kas_id = COALESCE(settlement_buku_kas_id, $1),
+         settlement_idempotency_key = COALESCE(settlement_idempotency_key, $2)
+     WHERE tenant_id = $3 AND id = $4`,
+    [cash.id, settlementKey, tenantId, pembayaran.id],
+  );
+  return cash;
+}
+
+async function createPembayaranDetailWithCash(client, {
+  tenantId,
+  pembayaran,
+  nominal,
+  petugas,
+  actorUserId,
+  settlementKey,
+}) {
+  const detailResult = await client.query(
+    `INSERT INTO pembayaran_detail (
+       pembayaran_id, nominal, petugas, tenant_id, unit_id, santri_unit_id,
+       settlement_destination, settlement_idempotency_key, actor_user_id, source
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'unit_cash'), $8, $9, 'manual')
+     RETURNING *`,
+    [
+      pembayaran.id,
+      nominal,
+      petugas,
+      tenantId,
+      pembayaran.unit_id,
+      pembayaran.santri_unit_id,
+      pembayaran.settlement_destination,
+      settlementKey,
+      actorUserId || null,
+    ],
+  );
+  const detail = detailResult.rows[0];
+  const cash = await postPembayaranToBukuKas(client, {
+    tenantId,
+    pembayaran,
+    detail,
+    actorUserId,
+    petugas,
+  });
+  return { detail, cash };
 }
 
 function formatNominalRp(value) {
@@ -578,6 +678,7 @@ router.post("/", async (req, res) => {
       tahun,
       nominal_tagihan,
       nominal_bayar,
+      idempotency_key,
     } = req.body;
 
     const santriCheck = await assertSantriInTenant(req.tenantId, santri_id, client);
@@ -629,6 +730,20 @@ router.post("/", async (req, res) => {
       actor_user_id: req.user?.id,
     });
 
+    let invoiceId = null;
+    if (Number(nominal_bayar || 0) > 0) {
+      const settlementKey = buildPaymentSettlementKey(row.id, idempotency_key || `create:${row.id}`);
+      const { detail } = await createPembayaranDetailWithCash(client, {
+        tenantId: req.tenantId,
+        pembayaran: row,
+        nominal: Number(nominal_bayar),
+        petugas: req.user?.nama || req.user?.username || null,
+        actorUserId: req.user?.id,
+        settlementKey,
+      });
+      invoiceId = detail.id;
+    }
+
     await client.query("COMMIT");
 
     if (Number(nominal_bayar || 0) > 0) {
@@ -637,7 +752,7 @@ router.post("/", async (req, res) => {
           tenantId: req.tenantId,
           santriId: row.santri_id,
           pembayaranId: row.id,
-          invoiceId: null,
+          invoiceId,
           namaTagihan: row.nama_tagihan,
           nominal: nominal_bayar,
         });
@@ -646,7 +761,7 @@ router.post("/", async (req, res) => {
       }
     }
 
-    res.json({ success: true, data: row, created_count: 1, skipped_count: 0, total_target: 1 });
+    res.json({ success: true, data: row, invoice_id: invoiceId, created_count: 1, skipped_count: 0, total_target: 1 });
   } catch (err) {
     await client.query("ROLLBACK");
     console.log(err);
@@ -657,45 +772,67 @@ router.post("/", async (req, res) => {
 });
 
 router.put("/bayar/:id", async (req, res) => {
+  const client = await pool.connect();
   try {
-    const access = await resolveActiveUnit(req);
+    const access = await resolveActiveUnit(req, client);
     requireUnitScope(access);
-    const { nominal, petugas } = req.body;
+    const { nominal, petugas, idempotency_key } = req.body;
+    const paymentAmount = Number(nominal);
+    if (!Number.isSafeInteger(paymentAmount) || paymentAmount <= 0) {
+      return res.status(400).json({ success: false, error: "Nominal pembayaran wajib lebih dari 0", code: "INVALID_NOMINAL" });
+    }
+    const settlementKey = buildPaymentSettlementKey(req.params.id, idempotency_key);
+    const existingDetail = idempotency_key
+      ? await findPaymentDetailBySettlementKey(client, req.tenantId, settlementKey)
+      : null;
+    if (existingDetail) {
+      return res.json({
+        success: true,
+        invoice_id: existingDetail.id,
+        idempotent: true,
+      });
+    }
 
-    const pembayaran = await pool.query(
+    await client.query("BEGIN");
+
+    const pembayaran = await client.query(
       `SELECT pembayaran.*, santri.nama, santri.kamar
        FROM pembayaran
        LEFT JOIN santri
          ON pembayaran.santri_id = santri.id
         AND santri.tenant_id = pembayaran.tenant_id
-       WHERE pembayaran.id = $1 AND pembayaran.tenant_id = $2`,
+       WHERE pembayaran.id = $1 AND pembayaran.tenant_id = $2
+       FOR UPDATE OF pembayaran`,
       [req.params.id, req.tenantId]
     );
 
     if (pembayaran.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ success: false, error: "Pembayaran tidak ditemukan" });
     }
 
     const data = pembayaran.rows[0];
     if (Number(data.unit_id) !== Number(access.unitId)) {
+      await client.query("ROLLBACK");
       return res.status(403).json({ success: false, error: "Akses unit ditolak", code: "UNIT_ACCESS_DENIED" });
     }
 
     if (isStatusLunas(data.status)) {
+      await client.query("ROLLBACK");
       return res.status(409).json({
         success: false,
         error: "Tagihan sudah lunas dan tidak dapat dibayar lagi",
       });
     }
 
-    const totalBayarBaru = Number(data.nominal_bayar || 0) + Number(nominal);
+    const totalBayarBaru = Number(data.nominal_bayar || 0) + paymentAmount;
     const sisaBaru = Number(data.nominal_tagihan) - totalBayarBaru;
 
     let status = "belum";
     if (totalBayarBaru > 0 && sisaBaru > 0) status = "cicil";
     if (sisaBaru <= 0) status = "lunas";
 
-    await pool.query(
+    await client.query(
       `UPDATE pembayaran
        SET nominal_bayar = $1,
            sisa_tunggakan = $2,
@@ -717,25 +854,17 @@ router.put("/bayar/:id", async (req, res) => {
       ]
     );
 
-    const detailResult = await pool.query(
-      `INSERT INTO pembayaran_detail (
-         pembayaran_id, nominal, petugas, tenant_id, unit_id, santri_unit_id,
-         settlement_destination, actor_user_id, source
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'unit_cash'), $8, 'manual')
-       RETURNING id`,
-      [
-        req.params.id,
-        nominal,
-        petugas,
-        req.tenantId,
-        access.unitId,
-        data.santri_unit_id,
-        data.settlement_destination,
-        req.user?.id || null,
-      ]
-    );
-    const invoiceId = detailResult.rows[0]?.id;
+    const { detail, cash } = await createPembayaranDetailWithCash(client, {
+      tenantId: req.tenantId,
+      pembayaran: data,
+      nominal: paymentAmount,
+      petugas,
+      actorUserId: req.user?.id,
+      settlementKey,
+    });
+    const invoiceId = detail.id;
+
+    await client.query("COMMIT");
 
     try {
       await notifyPembayaranDiterima({
@@ -744,16 +873,19 @@ router.put("/bayar/:id", async (req, res) => {
         pembayaranId: data.id,
         invoiceId,
         namaTagihan: data.nama_tagihan,
-        nominal,
+        nominal: paymentAmount,
       });
     } catch (notifErr) {
       console.log("PEMBAYARAN BAYAR IN-APP NOTIFICATION ERROR:", notifErr.message);
     }
 
-    res.json({ success: true, invoice_id: invoiceId });
+    res.json({ success: true, invoice_id: invoiceId, buku_kas_id: cash.id });
   } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
     console.log(err);
     sendUnitError(res, err, err.message || "Gagal menyimpan pembayaran");
+  } finally {
+    client.release();
   }
 });
 

@@ -342,6 +342,7 @@ function PembayaranPage() {
         nominal: Number(nominalBayar),
         petugas: user?.nama || user?.username || "Admin",
         unit_id: activeUnitId,
+        idempotency_key: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`,
       });
 
       alert("Pembayaran berhasil");
