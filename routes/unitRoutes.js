@@ -42,6 +42,13 @@ router.get("/", async (req, res) => {
     const params = [req.tenantId];
     let scope = "";
     if (allowed !== null) {
+      if (allowed.length === 0) {
+        return res.status(403).json({
+          success: false,
+          error: "Unit scope belum diassign",
+          code: "UNIT_SCOPE_UNASSIGNED",
+        });
+      }
       params.push(allowed);
       scope = " AND id = ANY($2::int[])";
     }
