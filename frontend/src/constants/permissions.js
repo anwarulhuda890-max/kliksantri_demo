@@ -87,3 +87,24 @@ export const ROUTE_FEATURES = {
   "/roles":             "sistem",
   "/units":             null,
 };
+
+// New authenticated routes are unit-aware by default. Only genuinely
+// tenant/global administration pages opt out here, so AppShell cannot drift
+// behind a second positive whitelist when a unit-owned module is added.
+const TENANT_GLOBAL_ROUTES = new Set([
+  "/alumni",
+  "/kas-instansi",
+  "/kas-instansi/konsolidasi",
+  "/program-unit",
+  "/wali-home-links",
+  "/profil-pesantren",
+  "/devices",
+  "/audit",
+  "/users",
+  "/roles",
+]);
+
+export function isUnitAwareRoute(pathname) {
+  return Object.prototype.hasOwnProperty.call(ROUTE_PERMISSIONS, pathname)
+    && !TENANT_GLOBAL_ROUTES.has(pathname);
+}

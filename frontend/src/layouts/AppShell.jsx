@@ -4,42 +4,14 @@ import Sidebar from "../components/Sidebar";
 import PageHeader from "../components/PageHeader";
 import TenantModeBanner from "../components/TenantModeBanner";
 import UnitWorkspaceSelector from "../components/UnitWorkspaceSelector";
+import { isUnitAwareRoute } from "../constants/permissions";
 
 function AppShell({ children, title, description, breadcrumb }) {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isDashboard = location.pathname === "/dashboard";
   const showBanner = !isDashboard;
-  const unitAwarePaths = new Set([
-    "/dashboard",
-    "/units",
-    "/santri",
-    "/kelas",
-    "/guru",
-    "/mata-pelajaran",
-    "/absensi",
-    "/absensi-guru",
-    "/nilai",
-    "/hafalan",
-    "/buku-kas",
-    "/perizinan",
-    "/pelanggaran",
-    "/kesehatan",
-    "/pengumuman",
-    "/pembayaran",
-    "/sahriyah",
-    "/sahriyah-setting",
-    "/rfid-dashboard",
-    "/rfid-monitor",
-    "/rfid-devices",
-    "/rfid-merchant",
-    "/rfid-topup",
-    "/wallet-withdrawal",
-    "/rfid-mutasi",
-    "/rfid-refund",
-    "/rfid-transactions",
-  ]);
-  const showUnitFoundation = unitAwarePaths.has(location.pathname);
+  const showUnitFoundation = isUnitAwareRoute(location.pathname);
 
   useEffect(() => {
     if (!drawerOpen) return undefined;
