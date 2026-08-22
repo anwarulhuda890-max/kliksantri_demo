@@ -5,6 +5,12 @@ const {
   assertSantriInTenant,
   assertRecordInTenant,
 } = require("../services/tenantScope");
+const {
+  accessResponse,
+  requireSantriInActiveUnit,
+  resolveOperationalAccess,
+  sendUnitError,
+} = require("../services/operationalUnitService");
 
 const notificationService =
   require("../services/notificationService");
@@ -13,26 +19,31 @@ console.log("PERIZINAN ROUTES LOADED");
 
 router.get("/", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req);
+    const unitFilter = access.mode === "UNIT" ? " AND perizinan.unit_id = $2" : "";
+    const params = access.mode === "UNIT" ? [req.tenantId, access.unitId] : [req.tenantId];
     const result = await pool.query(
       `SELECT perizinan.*, santri.nama, santri.kamar
        FROM perizinan
        LEFT JOIN santri
-         ON perizinan.santri_id = santri.id
+        ON perizinan.santri_id = santri.id
         AND santri.tenant_id = perizinan.tenant_id
        WHERE perizinan.tenant_id = $1
+       ${unitFilter}
        ORDER BY perizinan.id DESC`,
-      [req.tenantId]
+      params
     );
 
-    res.json({ success: true, data: result.rows });
+    res.json({ success: true, data: result.rows, access: accessResponse(access) });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memuat perizinan");
   }
 });
 
 router.post("/", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const {
       santri_id,
       tanggal,
@@ -48,13 +59,14 @@ router.post("/", async (req, res) => {
     if (!santriCheck.ok) {
       return res.status(400).json({ success: false, error: santriCheck.error });
     }
+    const membership = await requireSantriInActiveUnit(pool, req.tenantId, santri_id, access.unitId);
 
     const result = await pool.query(
       `INSERT INTO perizinan (
          santri_id, tanggal, alasan, tujuan, tanggal_kembali,
-         jam_keluar, status, catatan, tenant_id
+         jam_keluar, status, catatan, tenant_id, unit_id, santri_unit_id, actor_user_id, source
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'manual')
        RETURNING *`,
       [
         santri_id,
@@ -66,6 +78,9 @@ router.post("/", async (req, res) => {
         status,
         catatan,
         req.tenantId,
+        access.unitId,
+        membership.santri_unit_id,
+        req.user?.id || null,
       ]
     );
 
@@ -96,12 +111,13 @@ router.post("/", async (req, res) => {
     res.json({ success: true, data: perizinanRow });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal menyimpan perizinan");
   }
 });
 
 router.put("/kembali/:id", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const { id } = req.params;
     const owned = await assertRecordInTenant("perizinan", req.tenantId, id);
     if (!owned.ok) {
@@ -111,10 +127,13 @@ router.put("/kembali/:id", async (req, res) => {
     const result = await pool.query(
       `UPDATE perizinan
        SET status = 'kembali', jam_kembali = CURRENT_TIME
-       WHERE id = $1 AND tenant_id = $2
+       WHERE id = $1 AND tenant_id = $2 AND unit_id = $3
        RETURNING *`,
-      [id, req.tenantId]
+      [id, req.tenantId, access.unitId]
     );
+    if (result.rows.length === 0) {
+      return res.status(403).json({ success: false, error: "Akses unit ditolak", code: "UNIT_ACCESS_DENIED" });
+    }
 
     const perizinanRow = result.rows[0];
 
@@ -139,12 +158,13 @@ router.put("/kembali/:id", async (req, res) => {
     res.json({ success: true, data: perizinanRow });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memperbarui status perizinan");
   }
 });
 
 router.put("/:id", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const { id } = req.params;
     const owned = await assertRecordInTenant("perizinan", req.tenantId, id);
     if (!owned.ok) {
@@ -152,12 +172,15 @@ router.put("/:id", async (req, res) => {
     }
 
     const existing = await pool.query(
-      `SELECT id, santri_id, status
+      `SELECT id, santri_id, status, unit_id
        FROM perizinan
-       WHERE id = $1 AND tenant_id = $2
+       WHERE id = $1 AND tenant_id = $2 AND unit_id = $3
        LIMIT 1`,
-      [id, req.tenantId]
+      [id, req.tenantId, access.unitId]
     );
+    if (existing.rows.length === 0) {
+      return res.status(403).json({ success: false, error: "Akses unit ditolak", code: "UNIT_ACCESS_DENIED" });
+    }
 
     const {
       tanggal,
@@ -173,7 +196,7 @@ router.put("/:id", async (req, res) => {
       `UPDATE perizinan
        SET tanggal = $1, alasan = $2, tujuan = $3, tanggal_kembali = $4,
            jam_keluar = $5, status = $6, catatan = $7
-       WHERE id = $8 AND tenant_id = $9
+       WHERE id = $8 AND tenant_id = $9 AND unit_id = $10
        RETURNING *`,
       [
         tanggal,
@@ -185,6 +208,7 @@ router.put("/:id", async (req, res) => {
         catatan,
         id,
         req.tenantId,
+        access.unitId,
       ]
     );
 
@@ -215,17 +239,18 @@ router.put("/:id", async (req, res) => {
     res.json({ success: true, data: perizinanRow });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memperbarui perizinan");
   }
 });
 
 router.delete("/:id", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const result = await pool.query(
       `DELETE FROM perizinan
-       WHERE id = $1 AND tenant_id = $2
+       WHERE id = $1 AND tenant_id = $2 AND unit_id = $3
        RETURNING id`,
-      [req.params.id, req.tenantId]
+      [req.params.id, req.tenantId, access.unitId]
     );
 
     if (result.rows.length === 0) {
@@ -238,7 +263,7 @@ router.delete("/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal menghapus perizinan");
   }
 });
 

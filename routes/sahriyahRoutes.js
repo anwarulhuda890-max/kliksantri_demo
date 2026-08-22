@@ -8,11 +8,23 @@ const {
   buildPaginationResponse,
 } = require("../utils/paginationHelpers");
 const { SQL_SANTri_AKTIF } = require("../utils/santriStatus");
+const {
+  accessResponse,
+  requireSantriInActiveUnit,
+  resolveOperationalAccess,
+  sendUnitError,
+} = require("../services/operationalUnitService");
 
-function buildSahriyahFilters(tenantId, query) {
+function buildSahriyahFilters(tenantId, query, access) {
   const conditions = ["t.tenant_id = $1"];
   const params = [tenantId];
   let index = 2;
+
+  if (access?.mode === "UNIT") {
+    conditions.push(`t.unit_id = $${index}`);
+    params.push(access.unitId);
+    index += 1;
+  }
 
   if (query.bulan) {
     conditions.push(`t.bulan = $${index}`);
@@ -95,10 +107,12 @@ async function notifyTagihanSahriyahDibuat({ tenantId, santriId, tagihanId, bula
 
 router.get("/", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req);
     const paging = parsePagination(req.query, { defaultLimit: 20, maxLimit: 200 });
     const { whereSql, params, nextIndex, joinSql } = buildSahriyahFilters(
       req.tenantId,
       req.query,
+      access,
     );
 
     const countResult = await pool.query(
@@ -146,6 +160,7 @@ router.get("/", async (req, res) => {
     res.json({
       success: true,
       data: result.rows,
+      access: accessResponse(access),
       pagination: buildPaginationResponse({
         hasPagingParams: paging.hasPagingParams,
         limit: paging.limit,
@@ -162,24 +177,33 @@ router.get("/", async (req, res) => {
     });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memuat sahriyah");
   }
 });
 
 router.post("/generate", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const { bulan, tahun } = req.body;
 
     const santri = await pool.query(
-      `SELECT s.id, ss.id AS setting_id, ss.nominal_uang, ss.nominal_beras, ss.keterangan
-       FROM santri s
+      `SELECT s.id, su.id AS santri_unit_id,
+              ss.id AS setting_id, ss.nominal_uang, ss.nominal_beras, ss.keterangan
+       FROM santri_units su
+       JOIN santri s
+         ON s.id = su.santri_id
+        AND s.tenant_id = su.tenant_id
        LEFT JOIN sahriyah_setting ss
          ON s.id = ss.santri_id
         AND ss.tenant_id = s.tenant_id
-       WHERE s.tenant_id = $1
+        AND ss.unit_id = su.unit_id
+       WHERE su.tenant_id = $1
+         AND su.unit_id = $2
+         AND su.status = 'active'
+         AND su.left_at IS NULL
          AND ${SQL_SANTri_AKTIF}
        ORDER BY s.id`,
-      [req.tenantId]
+      [req.tenantId, access.unitId]
     );
 
     let created_count = 0;
@@ -199,17 +223,19 @@ router.post("/generate", async (req, res) => {
          FROM tagihan_sahriyah
          WHERE tenant_id = $1
            AND santri_id = $2
-           AND bulan = $3
-           AND tahun = $4`,
-        [req.tenantId, s.id, bulan, tahun]
+           AND unit_id = $3
+           AND bulan = $4
+           AND tahun = $5`,
+        [req.tenantId, s.id, access.unitId, bulan, tahun]
       );
 
       if (cek.rows.length === 0) {
         const created = await pool.query(
           `INSERT INTO tagihan_sahriyah (
-             santri_id, bulan, tahun, nominal, nominal_beras, keterangan, tenant_id
+             santri_id, bulan, tahun, nominal, nominal_beras, keterangan,
+             tenant_id, unit_id, santri_unit_id, actor_user_id, source
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'manual')
            RETURNING id`,
           [
             s.id,
@@ -219,6 +245,9 @@ router.post("/generate", async (req, res) => {
             s.nominal_beras || 0,
             s.keterangan || "",
             req.tenantId,
+            access.unitId,
+            s.santri_unit_id,
+            req.user?.id || null,
           ]
         );
         createdRows.push({
@@ -262,12 +291,13 @@ router.post("/generate", async (req, res) => {
     });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal generate sahriyah");
   }
 });
 
 router.put("/bayar/:id", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const { nominal, beras, petugas } = req.body;
 
     const tagihan = await pool.query(
@@ -276,8 +306,8 @@ router.put("/bayar/:id", async (req, res) => {
        LEFT JOIN santri s
          ON t.santri_id = s.id
         AND s.tenant_id = t.tenant_id
-       WHERE t.id = $1 AND t.tenant_id = $2`,
-      [req.params.id, req.tenantId]
+       WHERE t.id = $1 AND t.tenant_id = $2 AND t.unit_id = $3`,
+      [req.params.id, req.tenantId, access.unitId]
     );
 
     if (tagihan.rows.length === 0) {
@@ -313,7 +343,7 @@ router.put("/bayar/:id", async (req, res) => {
            status = $5,
            petugas = $6,
            tanggal_bayar = $7
-       WHERE id = $8 AND tenant_id = $9`,
+       WHERE id = $8 AND tenant_id = $9 AND unit_id = $10`,
       [
         totalBayarBaru,
         Math.max(0, sisaTagihanBaru),
@@ -324,28 +354,40 @@ router.put("/bayar/:id", async (req, res) => {
         tanggalBayar,
         req.params.id,
         req.tenantId,
+        access.unitId,
       ]
     );
 
     const pembayaranResult = await pool.query(
       `INSERT INTO pembayaran_sahriyah (
-         tagihan_id, nominal, nominal_beras, petugas, tenant_id
+         tagihan_id, nominal, nominal_beras, petugas, tenant_id,
+         unit_id, santri_unit_id, settlement_destination, actor_user_id, source
        )
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, 'unit_cash'), $9, 'manual')
        RETURNING id`,
-      [req.params.id, nominal, beras, petugas, req.tenantId]
+      [
+        req.params.id,
+        nominal,
+        beras,
+        petugas,
+        req.tenantId,
+        access.unitId,
+        data.santri_unit_id,
+        data.settlement_destination,
+        req.user?.id || null,
+      ]
     );
     const invoiceId = pembayaranResult.rows[0]?.id;
 
     if (Number(nominal) > 0) {
       await pool.query(
         `INSERT INTO buku_kas (
-           tanggal, jenis, kategori, keterangan, nominal, petugas, tenant_id
+           tanggal, jenis, kategori, keterangan, nominal, petugas, tenant_id, unit_id, actor_user_id, source
          )
          VALUES (
-           CURRENT_TIMESTAMP, 'Masuk', 'Sahriyah', $3, $1, $2, $4
+           CURRENT_TIMESTAMP, 'Masuk', 'Sahriyah', $3, $1, $2, $4, $5, $6, 'sahriyah'
          )`,
-        [nominal, petugas, `Pembayaran Sahriyah - ${data.nama}`, req.tenantId]
+        [nominal, petugas, `Pembayaran Sahriyah - ${data.nama}`, req.tenantId, access.unitId, req.user?.id || null]
       );
     }
 
@@ -391,34 +433,42 @@ router.put("/bayar/:id", async (req, res) => {
     });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal membayar sahriyah");
   }
 });
 
 router.get("/riwayat/:id", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req);
     const owned = await assertTagihanInTenant(req.tenantId, req.params.id);
     if (!owned.ok) {
       return res.status(404).json({ success: false, error: owned.error });
     }
 
+    const unitFilter = access.mode === "UNIT" ? " AND ps.unit_id = $3" : "";
+    const params = access.mode === "UNIT" ? [req.params.id, req.tenantId, access.unitId] : [req.params.id, req.tenantId];
     const result = await pool.query(
-      `SELECT *
-       FROM pembayaran_sahriyah
-       WHERE tagihan_id = $1 AND tenant_id = $2
+      `SELECT ps.*
+       FROM pembayaran_sahriyah ps
+       JOIN tagihan_sahriyah t
+         ON t.id = ps.tagihan_id
+        AND t.tenant_id = ps.tenant_id
+       WHERE ps.tagihan_id = $1 AND ps.tenant_id = $2
+       ${unitFilter}
        ORDER BY tanggal DESC`,
-      [req.params.id, req.tenantId]
+      params
     );
 
-    res.json({ success: true, data: result.rows });
+    res.json({ success: true, data: result.rows, access: accessResponse(access) });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memuat riwayat sahriyah");
   }
 });
 
 router.delete("/:id", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const owned = await assertTagihanInTenant(req.tenantId, req.params.id);
     if (!owned.ok) {
       return res.status(404).json({ success: false, error: owned.error });
@@ -426,20 +476,24 @@ router.delete("/:id", async (req, res) => {
 
     await pool.query(
       `DELETE FROM pembayaran_sahriyah
-       WHERE tagihan_id = $1 AND tenant_id = $2`,
-      [req.params.id, req.tenantId]
+       WHERE tagihan_id = $1 AND tenant_id = $2 AND unit_id = $3`,
+      [req.params.id, req.tenantId, access.unitId]
     );
 
-    await pool.query(
+    const deleted = await pool.query(
       `DELETE FROM tagihan_sahriyah
-       WHERE id = $1 AND tenant_id = $2`,
-      [req.params.id, req.tenantId]
+       WHERE id = $1 AND tenant_id = $2 AND unit_id = $3
+       RETURNING id`,
+      [req.params.id, req.tenantId, access.unitId]
     );
+    if (deleted.rows.length === 0) {
+      return res.status(403).json({ success: false, error: "Akses unit ditolak", code: "UNIT_ACCESS_DENIED" });
+    }
 
     res.json({ success: true });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal menghapus sahriyah");
   }
 });
 

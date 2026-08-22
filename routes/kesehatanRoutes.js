@@ -4,6 +4,12 @@ const {
   assertSantriInTenant,
   assertRecordInTenant,
 } = require("../services/tenantScope");
+const {
+  accessResponse,
+  requireSantriInActiveUnit,
+  resolveOperationalAccess,
+  sendUnitError,
+} = require("../services/operationalUnitService");
 
 const notificationService = require("../services/notificationService");
 
@@ -68,6 +74,12 @@ function validatePayload(body, { partial = false } = {}) {
 
 router.get("/stats/hari-ini", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req);
+    const unitFilter = access.mode === "UNIT" ? " AND ks.unit_id = $3" : "";
+    const santriUnitFilter = access.mode === "UNIT" ? " AND su.unit_id = $3" : "";
+    const params = access.mode === "UNIT"
+      ? [req.tenantId, [...PENANGANAN_FOLLOW_UP], access.unitId]
+      : [req.tenantId, [...PENANGANAN_FOLLOW_UP]];
     const result = await pool.query(
       `
       WITH latest AS (
@@ -78,10 +90,17 @@ router.get("/stats/hari-ini", async (req, res) => {
         FROM kesehatan_santri ks
         INNER JOIN santri s ON s.id = ks.santri_id AND s.tenant_id = ks.tenant_id
         WHERE ks.tenant_id = $1
+          ${unitFilter}
         ORDER BY ks.santri_id, ks.created_at DESC
       ),
       santri_aktif AS (
-        SELECT COUNT(*)::int AS total FROM santri WHERE tenant_id = $1
+        SELECT COUNT(DISTINCT su.santri_id)::int AS total
+        FROM santri_units su
+        JOIN santri s ON s.id = su.santri_id AND s.tenant_id = su.tenant_id
+        WHERE su.tenant_id = $1
+          AND su.status = 'active'
+          AND su.left_at IS NULL
+          ${santriUnitFilter}
       )
       SELECT
         (SELECT total FROM santri_aktif) AS total_santri,
@@ -92,7 +111,7 @@ router.get("/stats/hari-ini", async (req, res) => {
         )::int AS perlu_tindak_lanjut
       FROM latest l
       `,
-      [req.tenantId, [...PENANGANAN_FOLLOW_UP]]
+      params
     );
 
     const row = result.rows[0] || {};
@@ -108,16 +127,18 @@ router.get("/stats/hari-ini", async (req, res) => {
         sakit,
         perlu_tindak_lanjut: perlu,
         total_santri: total,
+        access: accessResponse(access),
       },
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memuat statistik kesehatan");
   }
 });
 
 router.get("/", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const offset = (page - 1) * limit;
@@ -127,6 +148,12 @@ router.get("/", async (req, res) => {
     const conditions = ["k.tenant_id = $1"];
     const params = [req.tenantId];
     let i = 2;
+
+    if (access.mode === "UNIT") {
+      conditions.push(`k.unit_id = $${i}`);
+      params.push(access.unitId);
+      i += 1;
+    }
 
     if (search) {
       conditions.push(`s.nama ILIKE $${i}`);
@@ -167,6 +194,7 @@ router.get("/", async (req, res) => {
     res.json({
       success: true,
       data: dataResult.rows,
+      access: accessResponse(access),
       pagination: {
         page,
         limit,
@@ -175,21 +203,25 @@ router.get("/", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memuat kesehatan");
   }
 });
 
 router.get("/:id", async (req, res) => {
   try {
+    const access = await resolveOperationalAccess(req);
     const { id } = req.params;
+    const unitFilter = access.mode === "UNIT" ? " AND k.unit_id = $3" : "";
+    const params = access.mode === "UNIT" ? [id, req.tenantId, access.unitId] : [id, req.tenantId];
     const result = await pool.query(
       `
       SELECT k.*, s.nama AS nama_santri, s.kamar
       FROM kesehatan_santri k
       LEFT JOIN santri s ON s.id = k.santri_id AND s.tenant_id = k.tenant_id
       WHERE k.id = $1 AND k.tenant_id = $2
+      ${unitFilter}
       `,
-      [id, req.tenantId]
+      params
     );
 
     if (result.rows.length === 0) {
@@ -202,7 +234,7 @@ router.get("/:id", async (req, res) => {
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memuat detail kesehatan");
   }
 });
 
@@ -212,6 +244,7 @@ router.post("/", async (req, res) => {
   }
 
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const errorMsg = validatePayload(req.body);
     if (errorMsg) {
       return res.status(400).json({ success: false, error: errorMsg });
@@ -229,14 +262,15 @@ router.post("/", async (req, res) => {
     if (!santriCheck.ok) {
       return res.status(400).json({ success: false, error: santriCheck.error });
     }
+    const membership = await requireSantriInActiveUnit(pool, req.tenantId, santri_id, access.unitId);
 
     const result = await pool.query(
       `
       INSERT INTO kesehatan_santri (
         santri_id, status_kesehatan, keluhan, tindakan_pertama,
-        status_penanganan, created_by, tenant_id
+        status_penanganan, created_by, tenant_id, unit_id, santri_unit_id, actor_user_id, source
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $6, 'manual')
       RETURNING *
       `,
       [
@@ -247,6 +281,8 @@ router.post("/", async (req, res) => {
         status_penanganan,
         req.user?.id ?? null,
         req.tenantId,
+        access.unitId,
+        membership.santri_unit_id,
       ]
     );
 
@@ -274,7 +310,7 @@ router.post("/", async (req, res) => {
     res.status(201).json({ success: true, data: kesehatanRow });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal menyimpan kesehatan");
   }
 });
 
@@ -284,10 +320,11 @@ router.put("/:id", async (req, res) => {
   }
 
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const { id } = req.params;
     const existing = await pool.query(
-      "SELECT * FROM kesehatan_santri WHERE id = $1 AND tenant_id = $2",
-      [id, req.tenantId]
+      "SELECT * FROM kesehatan_santri WHERE id = $1 AND tenant_id = $2 AND unit_id = $3",
+      [id, req.tenantId, access.unitId]
     );
 
     if (existing.rows.length === 0) {
@@ -316,6 +353,7 @@ router.put("/:id", async (req, res) => {
       if (!santriCheck.ok) {
         return res.status(400).json({ success: false, error: santriCheck.error });
       }
+      await requireSantriInActiveUnit(pool, req.tenantId, santri_id, access.unitId);
     }
 
     const result = await pool.query(
@@ -329,6 +367,7 @@ router.put("/:id", async (req, res) => {
         status_penanganan = COALESCE($5, status_penanganan),
         updated_at = NOW()
       WHERE id = $6 AND tenant_id = $7
+        AND unit_id = $8
       RETURNING *
       `,
       [
@@ -341,13 +380,14 @@ router.put("/:id", async (req, res) => {
         status_penanganan ?? null,
         id,
         req.tenantId,
+        access.unitId,
       ]
     );
 
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memperbarui kesehatan");
   }
 });
 
@@ -357,10 +397,11 @@ router.delete("/:id", async (req, res) => {
   }
 
   try {
+    const access = await resolveOperationalAccess(req, pool, { requireSpecific: true });
     const { id } = req.params;
     const result = await pool.query(
-      "DELETE FROM kesehatan_santri WHERE id = $1 AND tenant_id = $2 RETURNING id",
-      [id, req.tenantId]
+      "DELETE FROM kesehatan_santri WHERE id = $1 AND tenant_id = $2 AND unit_id = $3 RETURNING id",
+      [id, req.tenantId, access.unitId]
     );
 
     if (result.rows.length === 0) {
@@ -373,7 +414,7 @@ router.delete("/:id", async (req, res) => {
     res.json({ success: true, deleted_id: Number(id) });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal menghapus kesehatan");
   }
 });
 

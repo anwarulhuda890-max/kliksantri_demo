@@ -16,8 +16,15 @@ import {
   FormActionBar,
 } from "../components/ui/form";
 import { KeuanganPageStyles } from "../components/shared/PageResponsiveStyles";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 function SahriyahSettingPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const [data, setData] = useState([]);
   const [tableSearch, setTableSearch] = useState("");
   const [editModal, setEditModal] = useState(false);
@@ -29,7 +36,9 @@ function SahriyahSettingPage() {
 
   const getData = async () => {
     try {
-      const response = await api.get(`/sahriyah-setting?t=${Date.now()}`);
+      const response = await api.get("/sahriyah-setting", {
+        params: { ...readScopeParams, t: Date.now() },
+      });
       setData(response.data.data);
     } catch (err) {
       console.error(err);
@@ -38,7 +47,7 @@ function SahriyahSettingPage() {
 
   useEffect(() => {
     getData();
-  }, []);
+  }, [readScopeParams]);
 
   const filteredData = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
@@ -66,6 +75,7 @@ function SahriyahSettingPage() {
         nominal_uang: Number(form.nominal_uang),
         nominal_beras: Number(form.nominal_beras),
         keterangan: form.keterangan,
+        ...requireActiveUnitForWrite({ activeUnitId }),
       });
       setEditModal(false);
       setEditRow(null);
@@ -97,6 +107,7 @@ function SahriyahSettingPage() {
         nominal_uang: Number(bulkForm.nominal_uang),
         nominal_beras: Number(bulkForm.nominal_beras),
         keterangan: bulkForm.keterangan,
+        ...requireActiveUnitForWrite({ activeUnitId }),
       });
       setBulkModal(false);
       setBulkForm({ nominal_uang: "", nominal_beras: "", keterangan: "" });

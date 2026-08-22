@@ -23,6 +23,8 @@ import {
   FormGrid,
   FormActionBar,
 } from "../components/ui/form";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 const FORM_INIT = {
   santri_id: "",
@@ -37,6 +39,11 @@ const FORM_INIT = {
 };
 
 function PelanggaranPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const [pelanggaran, setPelanggaran] = useState([]);
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
@@ -45,7 +52,7 @@ function PelanggaranPage() {
 
   const getPelanggaran = async () => {
     try {
-      const response = await api.get("/pelanggaran");
+      const response = await api.get("/pelanggaran", { params: readScopeParams });
       setPelanggaran(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -54,7 +61,7 @@ function PelanggaranPage() {
 
   const getSantri = async () => {
     try {
-      const response = await api.get("/santri");
+      const response = await api.get("/santri", { params: readScopeParams });
       setSantri(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -65,7 +72,7 @@ function PelanggaranPage() {
     if (!window.confirm("Hapus data ini?")) return;
 
     try {
-      await api.delete(`/pelanggaran/${id}`);
+      await api.delete(`/pelanggaran/${id}`, { params: { unit_id: activeUnitId } });
       getPelanggaran();
     } catch (err) {
       console.error(err);
@@ -91,11 +98,12 @@ function PelanggaranPage() {
   const createPelanggaran = async () => {
     try {
       const payload = { ...form, poin: Number(form.poin) };
+      const unitPayload = requireActiveUnitForWrite({ activeUnitId });
 
       if (editId) {
-        await api.put(`/pelanggaran/${editId}`, payload);
+        await api.put(`/pelanggaran/${editId}`, { ...payload, ...unitPayload });
       } else {
-        await api.post("/pelanggaran", payload);
+        await api.post("/pelanggaran", { ...payload, ...unitPayload });
       }
 
       alert("Data berhasil disimpan");
@@ -112,7 +120,7 @@ function PelanggaranPage() {
   useEffect(() => {
     getPelanggaran();
     getSantri();
-  }, []);
+  }, [readScopeParams]);
 
   const filtered = useMemo(
     () =>

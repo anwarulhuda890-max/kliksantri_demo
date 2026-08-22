@@ -22,8 +22,15 @@ import {
   FormGrid,
   FormActionBar,
 } from "../components/ui/form";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 function PerizinanPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const [perizinan, setPerizinan] = useState([]);
   const [search, setSearch] = useState("");
   const [editId, setEditId] = useState(null);
@@ -42,7 +49,7 @@ function PerizinanPage() {
 
   const getPerizinan = async () => {
     try {
-      const response = await api.get("/perizinan");
+      const response = await api.get("/perizinan", { params: readScopeParams });
       setPerizinan(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -51,7 +58,7 @@ function PerizinanPage() {
 
   const getSantri = async () => {
     try {
-      const response = await api.get("/santri");
+      const response = await api.get("/santri", { params: readScopeParams });
       setSantri(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -60,10 +67,11 @@ function PerizinanPage() {
 
   const createPerizinan = async () => {
     try {
+      const unitPayload = requireActiveUnitForWrite({ activeUnitId });
       if (editId) {
-        await api.put(`/perizinan/${editId}`, form);
+        await api.put(`/perizinan/${editId}`, { ...form, ...unitPayload });
       } else {
-        await api.post("/perizinan", form);
+        await api.post("/perizinan", { ...form, ...unitPayload });
       }
 
       alert("Data berhasil disimpan");
@@ -90,7 +98,7 @@ function PerizinanPage() {
 
   const kembali = async (id) => {
     try {
-      await api.put(`/perizinan/kembali/${id}`);
+      await api.put(`/perizinan/kembali/${id}`, { unit_id: activeUnitId });
       getPerizinan();
     } catch (err) {
       console.error(err);
@@ -116,7 +124,7 @@ function PerizinanPage() {
     if (!window.confirm("Hapus data ini?")) return;
 
     try {
-      await api.delete(`/perizinan/${id}`);
+      await api.delete(`/perizinan/${id}`, { params: { unit_id: activeUnitId } });
       getPerizinan();
     } catch (err) {
       console.error(err);
@@ -126,7 +134,7 @@ function PerizinanPage() {
   useEffect(() => {
     getPerizinan();
     getSantri();
-  }, []);
+  }, [readScopeParams]);
 
   const filtered = useMemo(
     () =>

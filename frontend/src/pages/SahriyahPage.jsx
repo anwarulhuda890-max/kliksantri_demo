@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaFileInvoice, FaMoneyBillWave } from "react-icons/fa";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
@@ -32,6 +32,8 @@ import {
 import { exportExcel } from "../utils/exportExcel";
 import { formatCurrency, formatNumber } from "../utils/formatCurrency";
 import { KeuanganPageStyles } from "../components/shared/PageResponsiveStyles";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 function getApiError(err, fallback = "Terjadi kesalahan. Silakan coba lagi.") {
   return err?.response?.data?.error || fallback;
@@ -65,6 +67,11 @@ function buildSahriyahParams({
 }
 
 function SahriyahPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const [data, setData] = useState([]);
   const [summary, setSummary] = useState({
     total: 0,
@@ -115,6 +122,7 @@ function SahriyahPage() {
           filterKelas,
           page: pageNum,
         });
+        Object.assign(params, readScopeParams);
 
         const response = await api.get("/sahriyah", { params });
         setData(response.data.data || []);
@@ -141,12 +149,12 @@ function SahriyahPage() {
         setIsLoadingTable(false);
       }
     },
-    [bulan, tahun, search, filterStatus, filterKelas],
+    [bulan, tahun, search, filterStatus, filterKelas, readScopeParams],
   );
 
   useEffect(() => {
-    api.get("/kelas").then((res) => setKelas(res.data.data || [])).catch(console.error);
-  }, []);
+    api.get("/kelas", { params: readScopeParams }).then((res) => setKelas(res.data.data || [])).catch(console.error);
+  }, [readScopeParams]);
 
   useEffect(() => {
     if (searchDebounceRef.current) {
@@ -168,7 +176,11 @@ function SahriyahPage() {
     setIsGenerating(true);
 
     try {
-      const response = await api.post("/sahriyah/generate", { bulan, tahun });
+      const response = await api.post("/sahriyah/generate", {
+        bulan,
+        tahun,
+        ...requireActiveUnitForWrite({ activeUnitId }),
+      });
       const {
         created_count = 0,
         skipped_count = 0,
@@ -217,7 +229,9 @@ function SahriyahPage() {
 
   const lihatRiwayat = async (id) => {
     try {
-      const response = await api.get(`/sahriyah/riwayat/${id}`);
+      const response = await api.get(`/sahriyah/riwayat/${id}`, {
+        params: activeUnitId ? { unit_id: activeUnitId } : readScopeParams,
+      });
       setRiwayat(response.data.data);
       setShowRiwayat(true);
     } catch (err) {
@@ -299,6 +313,7 @@ function SahriyahPage() {
         nominal: Number(formBayar.nominal || 0),
         beras: Number(formBayar.beras || 0),
         petugas: formBayar.petugas,
+        ...requireActiveUnitForWrite({ activeUnitId }),
       });
 
       setShowBayar(false);
@@ -323,7 +338,7 @@ function SahriyahPage() {
     if (!yakin) return;
 
     try {
-      await api.delete(`/sahriyah/${id}`);
+      await api.delete(`/sahriyah/${id}`, { params: { unit_id: activeUnitId } });
       await fetchSahriyah(page);
       alert("Tagihan berhasil dihapus");
     } catch (err) {
@@ -343,6 +358,7 @@ function SahriyahPage() {
         page: 1,
         limit: 10000,
       });
+      Object.assign(params, readScopeParams);
 
       const response = await api.get("/sahriyah", { params });
       const rows = (response.data.data || []).map((d) => ({

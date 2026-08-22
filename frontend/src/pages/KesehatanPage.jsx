@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
 import Card from "../components/ui/Card";
@@ -24,6 +24,8 @@ import {
   FormActionBar,
 } from "../components/ui/form";
 import { getUser } from "../utils/storage";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 const FORM_INIT = {
   santri_id: "",
@@ -62,6 +64,11 @@ function penangananLabel(value) {
 }
 
 function KesehatanPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const canManage = canManageUser();
   const [list, setList] = useState([]);
   const [editId, setEditId] = useState(null);
@@ -78,6 +85,7 @@ function KesehatanPage() {
     try {
       setLoading(true);
       const params = { page, limit: pageSize };
+      Object.assign(params, readScopeParams);
       if (search.trim()) params.search = search.trim();
       if (statusFilter) params.status_kesehatan = statusFilter;
       const res = await api.get("/kesehatan", { params });
@@ -88,11 +96,11 @@ function KesehatanPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, statusFilter]);
+  }, [page, pageSize, readScopeParams, search, statusFilter]);
 
   const getSantri = async () => {
     try {
-      const res = await api.get("/santri");
+      const res = await api.get("/santri", { params: readScopeParams });
       setSantri(res.data.data || []);
     } catch (err) {
       console.error(err);
@@ -103,7 +111,7 @@ function KesehatanPage() {
     if (!canManage) return;
     if (!window.confirm("Hapus data kesehatan ini?")) return;
     try {
-      await api.delete(`/kesehatan/${id}`);
+      await api.delete(`/kesehatan/${id}`, { params: { unit_id: activeUnitId } });
       getList();
     } catch (err) {
       console.error(err);
@@ -128,6 +136,7 @@ function KesehatanPage() {
       const payload = {
         ...form,
         santri_id: Number(form.santri_id),
+        ...requireActiveUnitForWrite({ activeUnitId }),
       };
       if (editId) {
         await api.put(`/kesehatan/${editId}`, payload);
@@ -146,7 +155,7 @@ function KesehatanPage() {
 
   useEffect(() => {
     getSantri();
-  }, []);
+  }, [readScopeParams]);
 
   useEffect(() => {
     getList();
