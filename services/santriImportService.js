@@ -2,7 +2,10 @@ const XLSX = require("xlsx");
 const pool = require("../db");
 const waliAppService = require("./waliAppService");
 const { syncWaliFromSantri } = require("./waliSyncService");
-const { createMembershipWithEnrollment } = require("./santriUnitService");
+const {
+  createMembershipWithEnrollment,
+  getActiveMembership,
+} = require("./santriUnitService");
 
 const TEMPLATE_HEADERS = [
   "nama",
@@ -135,8 +138,8 @@ function parseWorkbookBuffer(buffer) {
   return XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
 }
 
-async function loadKelasMap(tenantId, unitId) {
-  const { rows } = await pool.query(
+async function loadKelasMap(tenantId, unitId, client = pool) {
+  const { rows } = await client.query(
     `SELECT id, unit_id, nama_kelas FROM kelas WHERE tenant_id = $1 AND unit_id = $2`,
     [tenantId, unitId]
   );
@@ -147,13 +150,22 @@ async function loadKelasMap(tenantId, unitId) {
   return map;
 }
 
-async function loadExistingNisSet(tenantId) {
-  const { rows } = await pool.query(
-    `SELECT nis FROM santri
+async function loadExistingIdentityMap(tenantId, client = pool) {
+  const { rows } = await client.query(
+    `SELECT id, nis, uid_rfid, nama, status
+     FROM santri
      WHERE tenant_id = $1 AND nis IS NOT NULL AND TRIM(nis) <> ''`,
     [tenantId]
   );
-  return new Set(rows.map((r) => String(r.nis).trim()));
+  const byNis = new Map();
+  for (const row of rows) {
+    const nis = cellToString(row.nis);
+    if (!nis) continue;
+    const list = byNis.get(nis) || [];
+    list.push(row);
+    byNis.set(nis, list);
+  }
+  return { byNis };
 }
 
 function validateRow(mapped, context) {
@@ -193,10 +205,12 @@ function validateRow(mapped, context) {
   }
 
   let kelasId = null;
+  let invalidClass = false;
   if (kelasName) {
     const kelasRow = context.kelasMap.get(kelasName.toLowerCase());
     if (!kelasRow) {
       errors.push("kelas tidak ditemukan");
+      invalidClass = true;
     } else {
       kelasId = kelasRow.id;
     }
@@ -205,15 +219,6 @@ function validateRow(mapped, context) {
   const status = normalizeStatus(mapped.status);
   if (status === null) {
     errors.push("status tidak valid (gunakan aktif atau nonaktif)");
-  }
-
-  if (nis) {
-    if (context.fileNis.has(nis)) {
-      errors.push("nis duplikat dalam file");
-    }
-    if (context.existingNis.has(nis)) {
-      errors.push("nis sudah terdaftar di tenant ini");
-    }
   }
 
   let normalizedHp = null;
@@ -225,7 +230,7 @@ function validateRow(mapped, context) {
   }
 
   if (errors.length > 0) {
-    return { ok: false, errors };
+    return { ok: false, errors, invalidClass };
   }
 
   return {
@@ -247,7 +252,58 @@ function validateRow(mapped, context) {
   };
 }
 
-async function previewImport(tenantId, buffer, { unitId } = {}) {
+function emptySummary() {
+  return {
+    NEW_SANTRI: 0,
+    ATTACH_EXISTING: 0,
+    ALREADY_IN_UNIT: 0,
+    CONFLICT: 0,
+    INVALID_CLASS: 0,
+  };
+}
+
+function rowStatusFromAction(action) {
+  return action === "CONFLICT" || action === "INVALID_CLASS" ? "invalid" : "valid";
+}
+
+async function classifyValidatedRow(tenantId, data, context, client = pool) {
+  const nis = cellToString(data.nis);
+
+  if (nis && context.fileNis.has(nis)) {
+    return {
+      action: "CONFLICT",
+      status: "invalid",
+      errors: ["nis duplikat dalam file"],
+    };
+  }
+
+  const candidates = nis ? (context.identities.byNis.get(nis) || []) : [];
+  if (candidates.length > 1) {
+    return {
+      action: "CONFLICT",
+      status: "invalid",
+      errors: ["identitas existing ambigu untuk NIS ini"],
+    };
+  }
+
+  if (candidates.length === 1) {
+    const existing = candidates[0];
+    const membership = await getActiveMembership(tenantId, existing.id, context.unitId, client);
+    return {
+      action: membership ? "ALREADY_IN_UNIT" : "ATTACH_EXISTING",
+      status: "valid",
+      existing_santri_id: existing.id,
+      existing_name: existing.nama,
+    };
+  }
+
+  return {
+    action: "NEW_SANTRI",
+    status: "valid",
+  };
+}
+
+async function previewImport(tenantId, buffer, { unitId, client = pool } = {}) {
   if (!Number.isInteger(Number(unitId))) {
     throw Object.assign(new Error("Unit aktif wajib dipilih untuk import"), {
       status: 400,
@@ -255,9 +311,11 @@ async function previewImport(tenantId, buffer, { unitId } = {}) {
     });
   }
   const rawRows = parseWorkbookBuffer(buffer);
-  const kelasMap = await loadKelasMap(tenantId, Number(unitId));
-  const existingNis = await loadExistingNisSet(tenantId);
+  const normalizedUnitId = Number(unitId);
+  const kelasMap = await loadKelasMap(tenantId, normalizedUnitId, client);
+  const identities = await loadExistingIdentityMap(tenantId, client);
   const fileNis = new Set();
+  const summary = emptySummary();
 
   const rows = [];
 
@@ -268,21 +326,35 @@ async function previewImport(tenantId, buffer, { unitId } = {}) {
     const isEmpty = TEMPLATE_HEADERS.every((h) => !cellToString(mapped[h]));
     if (isEmpty) continue;
 
-    const result = validateRow(mapped, { kelasMap, existingNis, fileNis });
+    const result = validateRow(mapped, { kelasMap });
 
     if (result.ok) {
+      const classification = await classifyValidatedRow(tenantId, result.data, {
+        kelasMap,
+        identities,
+        fileNis,
+        unitId: normalizedUnitId,
+      }, client);
       if (result.data.nis) {
         fileNis.add(result.data.nis);
       }
+      summary[classification.action] += 1;
       rows.push({
         row_number: rowNumber,
-        status: "valid",
+        status: rowStatusFromAction(classification.action),
+        action: classification.action,
+        existing_santri_id: classification.existing_santri_id || null,
+        existing_name: classification.existing_name || null,
+        errors: classification.errors || [],
         data: result.data,
       });
     } else {
+      const action = result.invalidClass ? "INVALID_CLASS" : "CONFLICT";
+      summary[action] += 1;
       rows.push({
         row_number: rowNumber,
         status: "invalid",
+        action,
         errors: result.errors,
         data: {
           nama: cellToString(mapped.nama) || null,
@@ -302,7 +374,8 @@ async function previewImport(tenantId, buffer, { unitId } = {}) {
     total_rows: rows.length,
     valid_rows: validRows,
     invalid_rows: invalidRows,
-    unit_id: Number(unitId),
+    summary,
+    unit_id: normalizedUnitId,
     rows,
   };
 }
@@ -324,7 +397,7 @@ async function validateCommitRow(tenantId, rowData, context) {
   return validateRow(mapped, context);
 }
 
-async function commitImport(tenantId, inputRows, { unitId } = {}) {
+async function commitImport(tenantId, inputRows, { unitId, client: externalClient = null } = {}) {
   if (!Number.isInteger(Number(unitId))) {
     throw Object.assign(new Error("Unit aktif wajib dipilih untuk import"), {
       status: 400,
@@ -339,9 +412,11 @@ async function commitImport(tenantId, inputRows, { unitId } = {}) {
   }
 
   const normalizedUnitId = Number(unitId);
-  const kelasMap = await loadKelasMap(tenantId, normalizedUnitId);
-  const existingNis = await loadExistingNisSet(tenantId);
+  const preflightClient = externalClient || pool;
+  const kelasMap = await loadKelasMap(tenantId, normalizedUnitId, preflightClient);
+  const identities = await loadExistingIdentityMap(tenantId, preflightClient);
   const fileNis = new Set();
+  const summary = emptySummary();
 
   const validated = [];
   const skipped = [];
@@ -356,19 +431,39 @@ async function commitImport(tenantId, inputRows, { unitId } = {}) {
 
     const result = await validateCommitRow(tenantId, rowData, {
       kelasMap,
-      existingNis,
-      fileNis,
     });
 
     if (!result.ok) {
-      skipped.push({ row_number: rowNumber, errors: result.errors });
+      const action = result.invalidClass ? "INVALID_CLASS" : "CONFLICT";
+      summary[action] += 1;
+      skipped.push({ row_number: rowNumber, action, errors: result.errors });
       continue;
     }
 
+    const classification = await classifyValidatedRow(tenantId, result.data, {
+      kelasMap,
+      identities,
+      fileNis,
+      unitId: normalizedUnitId,
+    }, preflightClient);
     if (result.data.nis) {
       fileNis.add(result.data.nis);
     }
-    validated.push({ row_number: rowNumber, data: result.data });
+    summary[classification.action] += 1;
+    if (classification.status === "invalid") {
+      skipped.push({
+        row_number: rowNumber,
+        action: classification.action,
+        errors: classification.errors,
+      });
+      continue;
+    }
+    validated.push({
+      row_number: rowNumber,
+      data: result.data,
+      action: classification.action,
+      existing_santri_id: classification.existing_santri_id || null,
+    });
   }
 
   if (validated.length === 0) {
@@ -376,88 +471,119 @@ async function commitImport(tenantId, inputRows, { unitId } = {}) {
       success: true,
       imported: 0,
       failed: skipped.length,
+      summary,
       skipped,
       imported_rows: [],
     };
   }
 
-  const client = await pool.connect();
+  const client = externalClient || await pool.connect();
   const importedRows = [];
 
   try {
-    await client.query("BEGIN");
+    if (!externalClient) await client.query("BEGIN");
 
-    for (const { row_number, data } of validated) {
-      const insertResult = await client.query(
-        `INSERT INTO santri (
-           nis, nama, alamat, kelas_id, kamar, status, tenant_id,
-           jenis_kelamin, tanggal_lahir, tanggal_masuk_pesantren, orang_tua, nomor_hp_ortu
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         RETURNING *`,
-        [
-          data.nis,
-          data.nama,
-          data.alamat,
-          data.kelas_id,
-          data.kamar,
-          data.status,
+    for (const { row_number, data, action, existing_santri_id } of validated) {
+      let santri;
+      let membership = null;
+
+      if (action === "ALREADY_IN_UNIT") {
+        const existing = await client.query(
+          `SELECT id, nis, nama FROM santri WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, existing_santri_id],
+        );
+        santri = existing.rows[0];
+      } else if (action === "ATTACH_EXISTING") {
+        const existing = await client.query(
+          `SELECT * FROM santri WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+          [tenantId, existing_santri_id],
+        );
+        santri = existing.rows[0];
+        const primaryCheck = await client.query(
+          `SELECT 1 FROM santri_units
+           WHERE tenant_id = $1 AND santri_id = $2
+             AND status = 'active' AND left_at IS NULL AND is_primary = true`,
+          [tenantId, santri.id],
+        );
+        membership = await createMembershipWithEnrollment({
+          tenant_id: tenantId,
+          santri_id: santri.id,
+          unit_id: normalizedUnitId,
+          unit_student_number: data.nis || santri.nis || null,
+          joined_at: data.tanggal_masuk_pesantren || null,
+          is_primary: primaryCheck.rows.length === 0,
+          kelas_id: data.kelas_id,
+        }, client);
+      } else {
+        const insertResult = await client.query(
+          `INSERT INTO santri (
+             nis, nama, alamat, kelas_id, kamar, status, tenant_id,
+             jenis_kelamin, tanggal_lahir, tanggal_masuk_pesantren, orang_tua, nomor_hp_ortu
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           RETURNING *`,
+          [
+            data.nis,
+            data.nama,
+            data.alamat,
+            data.kelas_id,
+            data.kamar,
+            data.status,
+            tenantId,
+            data.jenis_kelamin,
+            data.tanggal_lahir,
+            data.tanggal_masuk_pesantren,
+            data.nama_wali,
+            data.no_hp_wali,
+          ]
+        );
+
+        santri = insertResult.rows[0];
+        membership = await createMembershipWithEnrollment({
+          tenant_id: tenantId,
+          santri_id: santri.id,
+          unit_id: normalizedUnitId,
+          unit_student_number: data.nis || null,
+          joined_at: data.tanggal_masuk_pesantren || null,
+          is_primary: true,
+          kelas_id: data.kelas_id,
+        }, client);
+
+        await syncWaliFromSantri(client, {
           tenantId,
-          data.jenis_kelamin,
-          data.tanggal_lahir,
-          data.tanggal_masuk_pesantren,
-          data.nama_wali,
-          data.no_hp_wali,
-        ]
-      );
-
-      const santri = insertResult.rows[0];
-
-      await createMembershipWithEnrollment({
-        tenant_id: tenantId,
-        santri_id: santri.id,
-        unit_id: normalizedUnitId,
-        unit_student_number: data.nis || null,
-        joined_at: data.tanggal_masuk_pesantren || null,
-        is_primary: true,
-        kelas_id: data.kelas_id,
-      }, client);
-
-      await syncWaliFromSantri(client, {
-        tenantId,
-        santri: {
-          ...santri,
-          nama_wali: data.nama_wali,
-          no_hp_wali: data.no_hp_wali,
-        },
-      });
-
-      if (data.nis) {
-        existingNis.add(data.nis);
+          santri: {
+            ...santri,
+            nama_wali: data.nama_wali,
+            no_hp_wali: data.no_hp_wali,
+          },
+        });
       }
 
       importedRows.push({
         row_number,
+        action,
         santri_id: santri.id,
         nis: santri.nis,
         nama: santri.nama,
+        membership_id: membership?.id || null,
       });
     }
 
-    await client.query("COMMIT");
+    if (!externalClient) await client.query("COMMIT");
 
     return {
       success: true,
       imported: importedRows.length,
       failed: skipped.length,
+      summary,
       skipped,
       imported_rows: importedRows,
     };
   } catch (err) {
-    await client.query("ROLLBACK");
+    if (!externalClient) await client.query("ROLLBACK");
     throw err;
   } finally {
-    client.release();
+    if (!externalClient) client.release();
   }
 }
 

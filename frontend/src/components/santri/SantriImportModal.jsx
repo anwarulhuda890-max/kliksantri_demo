@@ -146,9 +146,11 @@ function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
         {step === 2 && preview ? (
           <div>
             <div style={summaryGridStyle}>
-              <SummaryCard label="Total baris" value={preview.total_rows} />
-              <SummaryCard label="Valid" value={preview.valid_rows} tone="success" />
-              <SummaryCard label="Invalid" value={preview.invalid_rows} tone="danger" />
+              <SummaryCard label="Santri Baru" value={preview.summary?.NEW_SANTRI || 0} tone="success" />
+              <SummaryCard label="Existing → unit" value={preview.summary?.ATTACH_EXISTING || 0} tone="success" />
+              <SummaryCard label="Sudah di unit" value={preview.summary?.ALREADY_IN_UNIT || 0} />
+              <SummaryCard label="Konflik" value={preview.summary?.CONFLICT || 0} tone="danger" />
+              <SummaryCard label="Kelas invalid" value={preview.summary?.INVALID_CLASS || 0} tone="danger" />
             </div>
 
             <TableScroll>
@@ -157,6 +159,7 @@ function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
                   <tr>
                     <th>Baris</th>
                     <th>Status</th>
+                    <th>Klasifikasi</th>
                     <th>Nama</th>
                     <th>NIS</th>
                     <th>Kelas</th>
@@ -173,6 +176,7 @@ function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
                           {row.status}
                         </Badge>
                       </td>
+                      <td>{row.action || "—"}</td>
                       <td>{row.data?.nama || "—"}</td>
                       <td>{row.data?.nis || "—"}</td>
                       <td>{row.data?.kelas || "—"}</td>
@@ -192,7 +196,7 @@ function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
                 onClick={runCommit}
                 disabled={loading || validCount === 0}
               >
-                {loading ? "Mengimport..." : `Import ${validCount} Baris Valid`}
+                {loading ? "Mengimport..." : `Proses Import ${validCount} Baris`}
               </Button>
               <Button variant="secondary" onClick={() => setStep(1)} disabled={loading}>
                 Upload Ulang
@@ -207,8 +211,10 @@ function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
         {step === 3 && commitResult ? (
           <div>
             <div style={summaryGridStyle}>
-              <SummaryCard label="Berhasil" value={commitResult.imported} tone="success" />
-              <SummaryCard label="Gagal / dilewati" value={commitResult.failed} tone="danger" />
+              <SummaryCard label="Santri Baru" value={commitResult.summary?.NEW_SANTRI || 0} tone="success" />
+              <SummaryCard label="Existing → unit" value={commitResult.summary?.ATTACH_EXISTING || 0} tone="success" />
+              <SummaryCard label="Sudah di unit" value={commitResult.summary?.ALREADY_IN_UNIT || 0} />
+              <SummaryCard label="Gagal / review" value={commitResult.failed} tone="danger" />
             </div>
 
             {commitResult.imported_rows?.length ? (
@@ -217,6 +223,7 @@ function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
                   <thead>
                     <tr>
                       <th>Baris</th>
+                      <th>Aksi</th>
                       <th>ID Santri</th>
                       <th>NIS</th>
                       <th>Nama</th>
@@ -226,6 +233,7 @@ function SantriImportModal({ open, onClose, onImported, unitId, unitName }) {
                     {commitResult.imported_rows.map((row) => (
                       <tr key={`${row.row_number}-${row.santri_id}`}>
                         <td>{row.row_number}</td>
+                        <td>{row.action || "—"}</td>
                         <td>{row.santri_id}</td>
                         <td>{row.nis || "—"}</td>
                         <td>{row.nama}</td>

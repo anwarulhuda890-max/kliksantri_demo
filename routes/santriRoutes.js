@@ -11,7 +11,7 @@ const {
 } = require("../services/santriOperationalService");
 const { isSantriNonAktif } = require("../utils/santriStatus");
 const { ensureAlumni } = require("../services/alumniService");
-const { canAccessAllUnits, loadVerifiedUser, resolveActiveUnit } = require("../services/unitAccessService");
+const { resolveActiveUnit } = require("../services/unitAccessService");
 const {
   assertSantriUnitAccess,
   assignClassEnrollment,
@@ -172,13 +172,6 @@ router.get(
   async (req, res) => {
     try {
       const workspace = await resolveSantriWorkspace(req, pool, { requireUnit: true });
-      const verifiedUser = await loadVerifiedUser(req.user, req.tenantId);
-      if (!canAccessAllUnits(verifiedUser)) {
-        throw Object.assign(new Error("Pencarian identitas lintas unit hanya tersedia untuk superadmin"), {
-          status: 403,
-          code: "IDENTITY_SEARCH_REQUIRES_SUPERADMIN",
-        });
-      }
       const search = String(req.query.search || "").trim();
       const { rows } = await pool.query(
         `SELECT s.id, s.nama, s.nis,
@@ -267,13 +260,6 @@ router.post(
       let santri;
       let waliSync = null;
       if (existing_santri_id) {
-        const verifiedUser = await loadVerifiedUser(req.user, req.tenantId, client);
-        if (!canAccessAllUnits(verifiedUser)) {
-          throw Object.assign(new Error("Penghubungan identitas lintas unit memerlukan superadmin"), {
-            status: 403,
-            code: "IDENTITY_LINK_REQUIRES_SUPERADMIN",
-          });
-        }
         if (!conflict || Number(conflict.id) !== Number(existing_santri_id)) {
           throw Object.assign(new Error("Identitas santri tidak ditemukan pada tenant ini"), {
             status: 404,

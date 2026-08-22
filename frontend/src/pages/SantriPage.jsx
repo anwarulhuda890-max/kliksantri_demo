@@ -31,7 +31,6 @@ import ImageUploadField from "../components/ImageUploadField";
 import { resolveDisplayMediaUrl } from "../utils/mediaUrl";
 import { formatCurrency } from "../utils/formatCurrency";
 import { useActiveUnit } from "../context/ActiveUnitContext";
-import { getUser } from "../utils/storage";
 
 function isStatusNonAktif(status) {
   const normalized = String(status ?? "aktif").trim().toLowerCase();
@@ -74,7 +73,6 @@ function formatLimitHarian(value) {
 
 function SantriPage() {
   const { activeUnitId, activeUnit, allUnitsAllowed } = useActiveUnit();
-  const currentUser = getUser();
   const [santri, setSantri] = useState([]);
   const [kelas, setKelas] = useState([]);
   const [identityCandidates, setIdentityCandidates] = useState([]);
@@ -128,7 +126,7 @@ function SantriPage() {
   };
 
   const getIdentityCandidates = async () => {
-    if (!activeUnitId || currentUser?.role !== "superadmin") {
+    if (!activeUnitId) {
       setIdentityCandidates([]);
       return;
     }
@@ -382,7 +380,7 @@ function SantriPage() {
         <FormSection title={editId ? "Edit Santri" : "Tambah Santri"}>
           <FormSection title="Data Santri">
             <FormGrid>
-              {!editId && currentUser?.role === "superadmin" ? (
+              {!editId ? (
                 <FormField
                   label="Hubungkan Identitas Existing (Opsional)"
                   htmlFor="santri-existing-identity"
