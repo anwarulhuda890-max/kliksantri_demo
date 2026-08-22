@@ -154,7 +154,7 @@ async function syncLegacyClass(tenantId, santriId, membership, kelasId, client =
      LEFT JOIN kelas legacy
        ON legacy.id = s.kelas_id AND legacy.tenant_id = s.tenant_id
      WHERE s.id = $1 AND s.tenant_id = $2
-     FOR UPDATE`,
+     FOR UPDATE OF s`,
     [santriId, tenantId],
   );
   const row = current.rows[0];

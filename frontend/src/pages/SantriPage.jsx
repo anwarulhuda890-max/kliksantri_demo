@@ -42,7 +42,7 @@ function formatExitSummary(summary) {
   const lines = [
     `Tagihan pembayaran belum lunas: ${summary.tagihan_pembayaran_belum_lunas || 0}`,
     `Tagihan sahriyah belum lunas: ${summary.tagihan_sahriyah_belum_lunas || 0}`,
-    `Saldo RFID: ${formatCurrency(Number(summary.saldo_rfid || 0))}`,
+    `Saldo Dompet: ${formatCurrency(Number(summary.saldo_rfid || 0))}`,
     `Kartu RFID terdaftar: ${summary.kartu_rfid_aktif ? "Ya" : "Tidak"}`,
     `Wali terhubung: ${summary.wali_terhubung ? "Ya" : "Belum"}`,
   ];
@@ -83,6 +83,8 @@ function SantriPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [detailSantri, setDetailSantri] = useState(null);
   const [tableSearch, setTableSearch] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState(null);
   const [form, setForm] = useState({
     nis: "",
     nama: "",
@@ -184,6 +186,7 @@ function SantriPage() {
   }, [tableSearch, setPage]);
 
   const handleChange = (e) => {
+    setSubmitMessage(null);
     setForm({
       ...form,
       [e.target.name]: e.target.value,
@@ -198,17 +201,36 @@ function SantriPage() {
   });
 
   const addSantri = async () => {
+    if (isSubmitting) return;
+
+    if (!activeUnitId) {
+      setSubmitMessage({ type: "error", text: "Pilih satu Unit Pendidikan sebelum menambah santri." });
+      return;
+    }
+    if (!form.existing_santri_id && (!form.nis.trim() || !form.nama.trim())) {
+      setSubmitMessage({ type: "error", text: "NIS dan Nama Lengkap wajib diisi." });
+      return;
+    }
+
     try {
-      if (!activeUnitId) {
-        alert("Pilih satu Unit Pendidikan sebelum menambah santri.");
-        return;
-      }
-      await api.post("/santri", buildPayload());
+      setIsSubmitting(true);
+      setSubmitMessage(null);
+      const response = await api.post("/santri", buildPayload());
       resetForm();
-      getSantri();
-      getIdentityCandidates();
+      await Promise.all([getSantri(), getIdentityCandidates()]);
+      const membershipUnit = response.data?.membership?.unit_id;
+      setSubmitMessage({
+        type: "success",
+        text: `Santri berhasil ditambahkan ke ${activeUnit?.nama || `unit ${membershipUnit || activeUnitId}`}.`,
+      });
     } catch (err) {
       console.error(err);
+      setSubmitMessage({
+        type: "error",
+        text: err.response?.data?.error || err.response?.data?.message || "Gagal menambah santri. Silakan coba lagi.",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -469,7 +491,7 @@ function SantriPage() {
               <FormField label="UID RFID / Kartu RFID" htmlFor="santri-rfid">
                 <Input id="santri-rfid" type="text" name="uid_rfid" value={form.uid_rfid} onChange={handleChange} />
               </FormField>
-              <FormField label="Saldo RFID" htmlFor="santri-saldo-rfid" helper="Saldo dikelola lewat menu topup RFID.">
+              <FormField label="Saldo Dompet" htmlFor="santri-saldo-rfid" helper="Saldo dikelola lewat menu topup Dompet.">
                 <Input
                   id="santri-saldo-rfid"
                   type="text"
@@ -553,9 +575,32 @@ function SantriPage() {
           </FormSection>
 
           <FormActionBar className="form-action-bar-v3--compact">
-            <Button variant="primary" onClick={editId ? updateSantri : addSantri} disabled={!activeUnitId}>
-              {editId ? "Update" : "Tambah"}
+            <Button
+              variant="primary"
+              onClick={editId ? updateSantri : addSantri}
+              disabled={!activeUnitId}
+              loading={!editId && isSubmitting}
+            >
+              {editId ? "Update" : isSubmitting ? "Menyimpan..." : "Tambah"}
             </Button>
+            {!activeUnitId ? (
+              <span role="status" style={{ color: "var(--danger)", fontSize: 13, fontWeight: 600 }}>
+                Pilih satu unit untuk menambah santri.
+              </span>
+            ) : null}
+            {submitMessage ? (
+              <span
+                role={submitMessage.type === "error" ? "alert" : "status"}
+                aria-live="polite"
+                style={{
+                  color: submitMessage.type === "error" ? "var(--danger)" : "var(--success)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {submitMessage.text}
+              </span>
+            ) : null}
           </FormActionBar>
         </FormSection>
       </Card>
@@ -717,7 +762,7 @@ function SantriPage() {
             <DetailItem label="Wali" value={detailSantri.orang_tua || "-"} translate="no" />
             <DetailItem label="Nomor HP Wali" value={detailSantri.nomor_hp_ortu || "-"} translate="no" />
             <DetailItem label="UID RFID" value={detailSantri.uid_rfid || "-"} />
-            <DetailItem label="Saldo RFID" value={formatCurrency(Number(detailSantri.saldo || 0))} />
+            <DetailItem label="Saldo Dompet" value={formatCurrency(Number(detailSantri.saldo || 0))} />
             <DetailItem label="Limit Jajan Harian" value={formatLimitHarian(detailSantri.limit_harian)} />
             <DetailItem label="Status" value={detailSantri.status || "aktif"} />
             <DetailItem label="Alamat Lengkap" value={detailSantri.alamat || "-"} fullWidth />

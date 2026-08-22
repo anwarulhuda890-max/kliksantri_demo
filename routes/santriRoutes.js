@@ -239,6 +239,14 @@ router.post(
         unit_student_number,
       } = req.body;
 
+      if (!existing_santri_id && (!String(nis || "").trim() || !String(nama || "").trim())) {
+        return res.status(400).json({
+          success: false,
+          error: "NIS dan nama santri wajib diisi",
+          code: "SANTRI_VALIDATION_ERROR",
+        });
+      }
+
       let normalizedLimitHarian;
       try {
         normalizedLimitHarian = normalizeLimitHarian(limit_harian);

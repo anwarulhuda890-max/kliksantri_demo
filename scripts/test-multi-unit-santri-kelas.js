@@ -7,6 +7,7 @@ const {
 const {
   assignClassEnrollment,
   getClassInUnit,
+  syncLegacyClass,
 } = require("../services/santriUnitService");
 const {
   listVisibleSantri,
@@ -123,7 +124,30 @@ async function run() {
   assert.ok(writes.some((entry) => entry.sql.includes("status = 'moved'")), "old enrollment must be closed");
   assert.ok(writes.some((entry) => entry.sql.includes("INSERT INTO santri_kelas_enrollments")), "new enrollment must be created");
 
-  console.log("PASS multi-unit Santri/Kelas: 11 access, isolation, count, and enrollment assertions");
+  const legacyWrites = [];
+  const legacyDb = {
+    async query(sql, params) {
+      legacyWrites.push({ sql, params });
+      if (sql.includes("SELECT s.kelas_id")) {
+        assert.match(sql, /FOR UPDATE OF s/, "legacy compatibility lock must target santri, not nullable kelas join");
+        return { rows: [{ kelas_id: null, legacy_unit_id: null }] };
+      }
+      return { rows: [] };
+    },
+  };
+  await syncLegacyClass(
+    1,
+    5,
+    { id: 50, tenant_id: 1, unit_id: 2, is_primary: true },
+    20,
+    legacyDb,
+  );
+  assert.ok(
+    legacyWrites.some((entry) => entry.sql.includes("UPDATE santri SET kelas_id")),
+    "legacy compatibility field must still synchronize after the scoped row lock",
+  );
+
+  console.log("PASS multi-unit Santri/Kelas: 13 access, isolation, count, enrollment, and lock assertions");
 }
 
 run().catch((error) => {
