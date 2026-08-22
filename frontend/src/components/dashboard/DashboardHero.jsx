@@ -30,11 +30,17 @@ function resolveHeroBannerUrl(bannerUrl) {
   return resolveMediaUrl(DEFAULT_BANNER);
 }
 
-export function DashboardHero() {
+export function DashboardHero({ unitContext }) {
   const user = getUser();
   const { display, profile } = useTenantProfile();
   const roleLabel = formatRoleLabel(user?.role);
-  const heroTitle = display?.hasCustomName ? display.name : "Dashboard Pesantren";
+  const isUnitScope = unitContext?.scope === "unit";
+  const isBlockedScope = unitContext?.scope === "blocked";
+  const heroTitle = isUnitScope
+    ? `Dashboard Unit ${unitContext.unitName || ""}`.trim()
+    : isBlockedScope
+      ? "Dashboard belum siap"
+    : display?.hasCustomName ? display.name : "Dashboard Pesantren";
 
   const primaryBannerSrc = useMemo(() => {
     if (!isBannerVisible(profile)) {
@@ -48,6 +54,7 @@ export function DashboardHero() {
   const [bannerSrc, setBannerSrc] = useState(primaryBannerSrc);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBannerSrc(primaryBannerSrc);
   }, [primaryBannerSrc]);
 
@@ -74,7 +81,11 @@ export function DashboardHero() {
           </p>
           <h1 className="dashboard-hero__title">{heroTitle}</h1>
           <p className="dashboard-hero__subtext">
-            Ringkasan informasi kegiatan dan administrasi pesantren hari ini.
+            {isUnitScope
+              ? "Ringkasan data unit yang sudah memiliki atribusi unit aman."
+              : isBlockedScope
+                ? "Menunggu ruang kerja unit yang valid sebelum menampilkan ringkasan."
+              : "Ringkasan informasi kegiatan dan administrasi pesantren hari ini."}
           </p>
         </div>
 

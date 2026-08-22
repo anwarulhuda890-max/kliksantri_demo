@@ -515,7 +515,6 @@ app.use(
   "/profil-pesantren",
   authMiddleware,
   tenantMiddleware,
-  requirePermission("profil.view"),
   profilPesantrenRoutes
 );
 

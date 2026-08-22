@@ -5,6 +5,153 @@ const { resolveActiveUnit } = require("../services/unitAccessService");
 
 const router = express.Router();
 
+const UNIT_NATIVE_DASHBOARD_FIELDS = [
+  "total_santri",
+  "santri_aktif",
+  "santri_non_aktif",
+  "total_kelas",
+];
+
+const TENANT_WIDE_DASHBOARD_FIELDS = [
+  "total_alumni",
+  "total_wali",
+  "total_saldo",
+  "persentase_kehadiran_santri",
+  "persentase_kehadiran_guru",
+  "total_hafalan",
+  "rata_nilai",
+  "absensi_hari_ini",
+  "nilai_terisi",
+  "total_wali_akun",
+  "wali_belum_ganti_pin",
+  "santri_poin_tertinggi",
+  "kas_masuk",
+  "kas_keluar",
+  "saldo_kas",
+  "total_pembayaran",
+  "total_tunggakan",
+  "sahriyah_status",
+  "total_pelanggaran",
+  "total_perizinan",
+  "belum_kembali",
+  "tamu_hari_ini",
+  "tamu_bulan_ini",
+  "tamu_masih_didalam",
+  "grafik_kas",
+  "transaksi_terbaru",
+  "pembayaran_terbaru",
+  "top_tunggakan",
+  "kesehatan_sehat",
+  "kesehatan_sakit",
+  "kesehatan_perlu_tindak_lanjut",
+];
+
+async function queryDashboardSantriCounts(client, tenantId, unitAccess) {
+  if (unitAccess.mode === "UNIT") {
+    const { rows } = await client.query(
+      `SELECT
+         COUNT(DISTINCT su.santri_id) FILTER (
+           WHERE su.status = 'active'
+             AND su.left_at IS NULL
+             AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif', 'active', '')
+         )::int AS total,
+         COUNT(DISTINCT su.santri_id) FILTER (
+           WHERE su.status = 'active'
+             AND su.left_at IS NULL
+             AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif', 'active', '')
+         )::int AS aktif,
+         COUNT(DISTINCT su.santri_id) FILTER (
+           WHERE NOT (
+             su.status = 'active'
+             AND su.left_at IS NULL
+             AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif', 'active', '')
+           )
+         )::int AS non_aktif
+       FROM santri_units su
+       JOIN santri s
+         ON s.id = su.santri_id
+        AND s.tenant_id = su.tenant_id
+       WHERE su.tenant_id = $1
+         AND su.unit_id = $2`,
+      [tenantId, unitAccess.unitId],
+    );
+    return rows[0] || { total: 0, aktif: 0, non_aktif: 0 };
+  }
+
+  const { rows } = await client.query(
+    `SELECT
+       COUNT(DISTINCT id) FILTER (
+         WHERE LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')
+       )::int AS total,
+       COUNT(DISTINCT id) FILTER (
+         WHERE LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')
+       )::int AS aktif,
+       COUNT(DISTINCT id) FILTER (
+         WHERE LOWER(TRIM(COALESCE(status, 'aktif'))) NOT IN ('aktif', 'active', '')
+       )::int AS non_aktif
+     FROM santri
+     WHERE tenant_id = $1`,
+    [tenantId],
+  );
+  return rows[0] || { total: 0, aktif: 0, non_aktif: 0 };
+}
+
+async function queryDashboardKelasCount(client, tenantId, unitAccess) {
+  if (unitAccess.mode === "UNIT") {
+    const { rows } = await client.query(
+      `SELECT COUNT(DISTINCT k.id)::int AS total
+       FROM kelas k
+       JOIN unit_pendidikan u
+         ON u.id = k.unit_id
+        AND u.tenant_id = k.tenant_id
+        AND u.is_active = true
+       WHERE k.tenant_id = $1
+         AND k.unit_id = $2`,
+      [tenantId, unitAccess.unitId],
+    );
+    return Number(rows[0]?.total || 0);
+  }
+
+  const { rows } = await client.query(
+    `SELECT COUNT(DISTINCT k.id)::int AS total
+     FROM kelas k
+     JOIN unit_pendidikan u
+       ON u.id = k.unit_id
+      AND u.tenant_id = k.tenant_id
+      AND u.is_active = true
+     WHERE k.tenant_id = $1`,
+    [tenantId],
+  );
+  return Number(rows[0]?.total || 0);
+}
+
+function buildDashboardErrorResponse(err) {
+  const status = Number(err?.status || 500);
+  if (status >= 400 && status < 500) {
+    return {
+      status,
+      body: {
+        success: false,
+        error: err.message || "Akses dashboard ditolak",
+        code: err.code || "DASHBOARD_ACCESS_DENIED",
+        meta: {
+          scope: "unresolved",
+          data_quality: "access_denied",
+        },
+      },
+    };
+  }
+
+  return {
+    status: 500,
+    body: {
+      success: false,
+      error: err?.message || "Dashboard belum dapat dimuat",
+      code: "DASHBOARD_SUMMARY_FAILED",
+    },
+  };
+}
+
 // ======================
 // DASHBOARD SUMMARY
 // ======================
@@ -19,31 +166,11 @@ router.get(
 
       const tenantId = req.tenantId;
       const unitAccess = await resolveActiveUnit(req);
-      if (unitAccess.mode === "UNIT") {
-        return res.status(409).json({
-          success: false,
-          error: "Dashboard unit belum tersedia sampai snapshot unit modul selesai",
-          code: "DASHBOARD_UNIT_SNAPSHOT_PENDING",
-          meta: {
-            scope: "unit",
-            unit_id: unitAccess.unitId,
-            unit_name: unitAccess.unit?.nama || null,
-            generated_at: new Date().toISOString(),
-            data_quality: "partial_legacy",
-          },
-        });
-      }
+      const isUnitScope = unitAccess.mode === "UNIT";
       const bulanIni = new Date().getMonth() + 1;
       const tahunIni = new Date().getFullYear();
 
-      const santri =
-        await pool.query(
-          `SELECT COUNT(*) AS total
-           FROM santri
-           WHERE tenant_id = $1
-             AND LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')`,
-          [tenantId]
-        );
+      const santri = await queryDashboardSantriCounts(pool, tenantId, unitAccess);
 
       const alumni =
         await pool.query(
@@ -51,11 +178,7 @@ router.get(
           [tenantId]
         );
 
-      const kelas =
-        await pool.query(
-          `SELECT COUNT(*) AS total FROM kelas WHERE tenant_id = $1`,
-          [tenantId]
-        );
+      const totalKelas = await queryDashboardKelasCount(pool, tenantId, unitAccess);
 
       const wali =
         await pool.query(
@@ -275,7 +398,7 @@ const santriMelanggar =
 const persentaseMelanggar =
 
   Number(
-    santri.rows[0].total
+    santri.total || 0
   ) === 0
 
     ? 0
@@ -291,7 +414,7 @@ const persentaseMelanggar =
           /
 
           Number(
-            santri.rows[0].total
+            santri.total || 0
           )
 
         ) * 100
@@ -302,25 +425,8 @@ const persentaseMelanggar =
       // SANTRI AKTIF / NON AKTIF
       // ======================
 
-      let santriAktif    = Number(santri.rows[0].total);
-      let santriNonAktif = 0;
-
-      try {
-        const santriStatus = await pool.query(
-          `SELECT
-             COUNT(*) FILTER (
-               WHERE LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')
-             ) AS aktif,
-             COUNT(*) FILTER (
-               WHERE LOWER(TRIM(COALESCE(status, 'aktif'))) NOT IN ('aktif', 'active', '')
-             ) AS non_aktif
-           FROM santri
-           WHERE tenant_id = $1`,
-          [tenantId]
-        );
-        santriAktif    = Number(santriStatus.rows[0].aktif);
-        santriNonAktif = Number(santriStatus.rows[0].non_aktif);
-      } catch { /* kolom status tidak ada, gunakan fallback */ }
+      let santriAktif = Number(santri.aktif || santri.total || 0);
+      let santriNonAktif = Number(santri.non_aktif || 0);
 
       // ======================
       // ABSENSI HARI INI
@@ -797,17 +903,20 @@ const kSakit = Number(kStat.sakit || 0);
         success: true,
 
         meta: {
-          scope: "all",
-          unit_id: null,
-          unit_name: null,
+          scope: isUnitScope ? "unit" : "all",
+          all_units: !isUnitScope,
+          unit_id: isUnitScope ? unitAccess.unitId : null,
+          unit_name: isUnitScope ? unitAccess.unit?.nama || null : null,
           generated_at: new Date().toISOString(),
-          data_quality: "tenant_aggregate_legacy",
+          data_quality: isUnitScope ? "unit_native_partial" : "tenant_aggregate_mixed",
+          unit_native_fields: UNIT_NATIVE_DASHBOARD_FIELDS,
+          tenant_wide_fields: TENANT_WIDE_DASHBOARD_FIELDS,
         },
 
         data: {
 
           total_santri:
-            Number(santri.rows[0].total),
+            Number(santri.total || 0),
 
           total_alumni:
             Number(alumni.rows[0].total),
@@ -819,7 +928,7 @@ const kSakit = Number(kStat.sakit || 0);
             santriNonAktif,
 
           total_kelas:
-            Number(kelas.rows[0].total),
+            totalKelas,
 
           total_wali:
             Number(wali.rows[0].total),
@@ -955,21 +1064,21 @@ kesehatan_perlu_tindak_lanjut:
 
     catch (err) {
 
-      console.log(err);
+      const response = buildDashboardErrorResponse(err);
+      if (response.status >= 500) console.log(err);
 
-      res.status(500).json({
-
-        success: false,
-
-        error:
-          err.message
-
-      });
+      res.status(response.status).json(response.body);
 
     }
 
   }
 
 );
+
+router._test = {
+  buildDashboardErrorResponse,
+  queryDashboardKelasCount,
+  queryDashboardSantriCounts,
+};
 
 module.exports = router;

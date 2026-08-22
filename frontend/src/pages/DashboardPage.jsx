@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
 import { DashboardResponsiveStyles } from "../components/dashboard/DashboardResponsiveStyles";
@@ -12,6 +12,7 @@ import DashboardPendidikan from "../components/dashboard/DashboardPendidikan";
 import DashboardKeamanan from "../components/dashboard/DashboardKeamanan";
 import DashboardSekretaris from "../components/dashboard/DashboardSekretaris";
 import DashboardKesehatanHariIni from "../components/dashboard/DashboardKesehatanHariIni";
+import { useActiveUnit } from "../context/ActiveUnitContext";
 import { getUser } from "../utils/storage";
 import { hasPermission } from "../utils/hasPermission";
 
@@ -24,10 +25,8 @@ const DEFAULT_SHORTCUTS = [
   { permission: "pengumuman.view", label: "Pengumuman", path: "/pengumuman" },
 ];
 
-function DashboardPage() {
-  const user = getUser();
-
-  const [summary, setSummary] = useState({
+function createEmptySummary() {
+  return {
     total_santri: 0,
     total_alumni: 0,
     santri_aktif: 0,
@@ -60,14 +59,40 @@ function DashboardPage() {
     transaksi_terbaru: [],
     pembayaran_terbaru: [],
     top_tunggakan: [],
-  });
+  };
+}
 
-  const pembayaranTerbaru = summary?.pembayaran_terbaru || [];
+function DashboardPage() {
+  const user = getUser();
+  const {
+    activeUnitId,
+    activeUnit,
+    allUnitsAllowed,
+    loading: unitLoading,
+    error: unitError,
+  } = useActiveUnit();
+
+  const [summary, setSummary] = useState(createEmptySummary);
+  const [summaryMeta, setSummaryMeta] = useState({ scope: "all", all_units: true });
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+
   const role = user?.role || "";
   const canViewDashboardData = hasPermission("dashboard.view");
   const shortcuts = DEFAULT_SHORTCUTS.filter((item) => hasPermission(item.permission));
 
-  const grafikKas = (summary?.grafik_kas || []).map((item) => ({
+  const isUnitWorkspace = Boolean(activeUnitId);
+  const dashboardScopeReady = !unitLoading && !unitError && (allUnitsAllowed || isUnitWorkspace);
+  const dashboardBlockedMessage = unitError ||
+    (!unitLoading && !allUnitsAllowed && !isUnitWorkspace
+      ? "Belum memiliki penugasan unit. Minta superadmin mengatur unit untuk akun ini."
+      : "");
+  const unitContext = isUnitWorkspace
+    ? { scope: "unit", unitName: activeUnit?.nama || summaryMeta.unit_name || "Unit" }
+    : dashboardScopeReady ? { scope: "all" } : { scope: "blocked" };
+  const summaryForView = dashboardScopeReady && !summaryError ? summary : createEmptySummary();
+  const pembayaranTerbaru = summaryForView?.pembayaran_terbaru || [];
+  const grafikKas = (summaryForView?.grafik_kas || []).map((item) => ({
     bulan: ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"][
       Number(item.bulan)
     ],
@@ -75,28 +100,78 @@ function DashboardPage() {
     keluar: Number(item.keluar),
   }));
 
-  const getSummary = async () => {
+  const getSummary = useCallback(async () => {
+    if (!activeUnitId && !allUnitsAllowed) {
+      setSummary(createEmptySummary());
+      setSummaryMeta({ scope: "blocked", all_units: false });
+      setSummaryError("Belum memiliki penugasan unit. Minta superadmin mengatur unit untuk akun ini.");
+      return;
+    }
+
     try {
-      const response = await api.get("/dashboard/summary");
+      setSummaryLoading(true);
+      setSummaryError("");
+      const params = activeUnitId ? { unit_id: activeUnitId } : { scope: "all" };
+      const response = await api.get("/dashboard/summary", { params });
       setSummary(response.data.data);
+      setSummaryMeta(response.data.meta || { scope: activeUnitId ? "unit" : "all" });
     } catch (err) {
       console.error(err);
+      const code = err.response?.data?.code;
+      setSummary(createEmptySummary());
+      setSummaryError(
+        ["UNIT_ACCESS_DENIED", "UNIT_REQUIRED"].includes(code)
+          ? "Belum memiliki penugasan unit. Minta superadmin mengatur unit untuk akun ini."
+          : err.response?.data?.error || "Ringkasan dashboard belum dapat dimuat."
+      );
+    } finally {
+      setSummaryLoading(false);
     }
-  };
+  }, [activeUnitId, allUnitsAllowed]);
 
   useEffect(() => {
-    if (canViewDashboardData) {
+    if (canViewDashboardData && dashboardScopeReady) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       getSummary();
     }
-  }, [canViewDashboardData]);
+  }, [canViewDashboardData, dashboardScopeReady, getSummary]);
 
   return (
     <AppShell title="Dashboard" breadcrumb="Dashboard">
       <DashboardResponsiveStyles />
       <div className="dashboard-page dashboard-monitoring-v3">
         <section className="dashboard-section dashboard-section--hero">
-          <DashboardHero />
+          <DashboardHero unitContext={unitContext} />
         </section>
+
+        {canViewDashboardData && dashboardScopeReady ? (
+          <section className="dashboard-section">
+            <div style={contextPanelStyle}>
+              <strong>
+                {isUnitWorkspace
+                  ? `Workspace aktif: ${unitContext.unitName}`
+                  : "Workspace aktif: Semua Unit"}
+              </strong>
+              <span>
+                {isUnitWorkspace
+                  ? "Dashboard menampilkan Santri dan Kelas berbasis unit. Ringkasan lama yang belum unit-native disembunyikan agar tidak terlihat sebagai angka unit."
+                  : "Dashboard menampilkan agregasi yayasan/tenant dengan santri unik, bukan jumlah membership."}
+              </span>
+            </div>
+          </section>
+        ) : null}
+
+        {canViewDashboardData && !unitLoading && (summaryError || dashboardBlockedMessage) ? (
+          <section className="dashboard-section">
+            <div style={errorPanelStyle}>{summaryError || dashboardBlockedMessage}</div>
+          </section>
+        ) : null}
+
+        {unitLoading || summaryLoading ? (
+          <section className="dashboard-section">
+            <div style={loadingPanelStyle}>Memuat ringkasan workspace aktif...</div>
+          </section>
+        ) : null}
 
         {!canViewDashboardData ? (
           <section className="dashboard-section dashboard-section--metrics">
@@ -124,23 +199,25 @@ function DashboardPage() {
           </section>
         ) : null}
 
-        {canViewDashboardData && role === "superadmin" && (
+        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "superadmin" && (
           <>
           <section className="dashboard-section dashboard-section--metrics">
-            <DashboardMetrics summary={summary} />
+            <DashboardMetrics summary={summaryForView} meta={isUnitWorkspace ? { scope: "unit" } : summaryMeta} />
           </section>
 
+          {!isUnitWorkspace ? (
+          <>
           <section className="dashboard-section dashboard-section--panels">
             <div className="dashboard-row-3">
-              <DashboardKesehatanHariIni summary={summary} />
+              <DashboardKesehatanHariIni summary={summaryForView} />
               <DashboardAnnouncement
                 pembayaranTerbaru={pembayaranTerbaru}
-                sahriyahStatus={summary.sahriyah_status}
-                totalPembayaran={summary.total_pembayaran}
-                totalTunggakan={summary.total_tunggakan}
+                sahriyahStatus={summaryForView.sahriyah_status}
+                totalPembayaran={summaryForView.total_pembayaran}
+                totalTunggakan={summaryForView.total_tunggakan}
               />
               <DashboardViolations
-                topPelanggar={(summary.santri_poin_tertinggi || []).slice(0, 5)}
+                topPelanggar={(summaryForView.santri_poin_tertinggi || []).slice(0, 5)}
               />
             </div>
           </section>
@@ -149,19 +226,21 @@ function DashboardPage() {
             <DashboardFinanceChart grafikKas={grafikKas} />
           </section>
           </>
+          ) : null}
+          </>
         )}
 
-        {canViewDashboardData && role === "keuangan" && <DashboardKeuangan summary={summary} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "keuangan" && <DashboardKeuangan summary={summaryForView} />}
 
-        {canViewDashboardData && role === "pendidikan" && <DashboardPendidikan summary={summary} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "pendidikan" && <DashboardPendidikan summary={summaryForView} />}
 
-        {canViewDashboardData && role === "keamanan" && <DashboardKeamanan summary={summary} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "keamanan" && <DashboardKeamanan summary={summaryForView} />}
 
-        {canViewDashboardData && role === "sekretaris" && <DashboardSekretaris summary={summary} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "sekretaris" && <DashboardSekretaris summary={summaryForView} />}
 
-        {canViewDashboardData && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
+        {canViewDashboardData && dashboardScopeReady && !summaryError && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
           <section className="dashboard-section dashboard-section--metrics">
-            <DashboardMetrics summary={summary} />
+            <DashboardMetrics summary={summaryForView} meta={isUnitWorkspace ? { scope: "unit" } : summaryMeta} />
           </section>
         )}
       </div>
@@ -175,6 +254,41 @@ const shortcutPanelStyle = {
   borderRadius: "var(--radius-lg)",
   padding: "20px",
   boxShadow: "var(--shadow-card)",
+};
+
+const contextPanelStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px 12px",
+  alignItems: "center",
+  justifyContent: "space-between",
+  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  padding: "12px 14px",
+  color: "var(--text-primary)",
+  fontSize: "13px",
+  boxShadow: "var(--shadow-card)",
+};
+
+const errorPanelStyle = {
+  background: "var(--danger-subtle)",
+  border: "1px solid color-mix(in srgb, var(--danger) 22%, transparent)",
+  borderRadius: "var(--radius-md)",
+  padding: "12px 14px",
+  color: "var(--danger)",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const loadingPanelStyle = {
+  background: "var(--surface-muted)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-md)",
+  padding: "12px 14px",
+  color: "var(--text-secondary)",
+  fontSize: "13px",
+  fontWeight: 700,
 };
 
 const shortcutTitleStyle = {

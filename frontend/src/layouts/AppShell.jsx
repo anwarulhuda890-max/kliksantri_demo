@@ -30,9 +30,13 @@ function AppShell({ children, title, description, breadcrumb }) {
     "/sahriyah",
     "/sahriyah-setting",
     "/rfid-dashboard",
+    "/rfid-monitor",
+    "/rfid-devices",
+    "/rfid-merchant",
     "/rfid-topup",
     "/wallet-withdrawal",
     "/rfid-mutasi",
+    "/rfid-refund",
     "/rfid-transactions",
   ]);
   const showUnitFoundation = unitAwarePaths.has(location.pathname);

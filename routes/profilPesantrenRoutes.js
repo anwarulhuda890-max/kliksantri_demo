@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 
 const pool = require("../db");
+const requirePermission = require("../middleware/requirePermission");
 
 function parseTahunBerdiri(value) {
   if (value == null || value === "") return null;
@@ -12,6 +13,29 @@ function parseTahunBerdiri(value) {
     return { error: "tahun_berdiri harus 4 digit antara 1800 dan tahun berjalan" };
   }
   return n;
+}
+
+function pickSafeDisplayProfile(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    tenant_id: row.tenant_id,
+    nama_pesantren: row.nama_pesantren,
+    alamat: row.alamat,
+    logo_url: row.logo_url,
+    banner_url: row.banner_url,
+    banner_active: row.banner_active,
+    splash_logo_url: row.splash_logo_url,
+    app_icon_url: row.app_icon_url,
+    tagline: row.tagline,
+    updated_at: row.updated_at,
+  };
+}
+
+async function canReadFullProfile(role) {
+  if (!role) return false;
+  const permissions = await requirePermission.getPermissionList(role, { tenantScoped: true });
+  return permissions.includes("profil.view") || permissions.includes("profil.manage");
 }
 
 // ======================
@@ -51,9 +75,12 @@ router.get("/", async (req, res) => {
       [tenantId]
     );
 
+    const fullProfileAllowed = await canReadFullProfile(req.user?.role);
+
     res.json({
       success: true,
-      data: result.rows[0] ?? null,
+      data: fullProfileAllowed ? (result.rows[0] ?? null) : pickSafeDisplayProfile(result.rows[0]),
+      display_only: !fullProfileAllowed,
     });
   } catch (err) {
     console.log(err);
@@ -69,7 +96,7 @@ router.get("/", async (req, res) => {
 // Upsert per tenant — tidak lagi singleton id = 1
 // ======================
 
-router.put("/", async (req, res) => {
+router.put("/", requirePermission.requireAnyPermission(["profil.view", "profil.manage"]), async (req, res) => {
   try {
     const tenantId = req.tenantId;
 

@@ -1,4 +1,4 @@
-import { FaExclamationCircle, FaUserGraduate, FaUsers, FaWallet } from "react-icons/fa";
+import { FaChalkboardTeacher, FaExclamationCircle, FaUserGraduate, FaUsers, FaWallet } from "react-icons/fa";
 import KpiCard from "../ui/KpiCard";
 import KpiGrid from "../ui/KpiGrid";
 import { formatCurrency, formatNumber } from "../../utils/formatCurrency";
@@ -126,7 +126,8 @@ function MetricIcon({ children, tone = "green" }) {
   );
 }
 
-function DashboardMetrics({ summary }) {
+function DashboardMetrics({ summary, meta }) {
+  const isUnitScope = meta?.scope === "unit";
   const belumKembali = summary.belum_kembali || 0;
   const tunggakan = summary.total_tunggakan;
 
@@ -137,9 +138,29 @@ function DashboardMetrics({ summary }) {
         <div className="dashboard-kpi-wrap dashboard-kpi-wrap--santri">
           <KpiCard
             icon={<MetricIcon tone="green"><FaUsers /></MetricIcon>}
-            label="Total Santri"
+            label={isUnitScope ? "Santri Unit Aktif" : "Total Santri"}
             value={formatNumber(summary.total_santri)}
             accent="primary"
+          />
+        </div>
+        {isUnitScope ? (
+          <div className="dashboard-kpi-wrap dashboard-kpi-wrap--kelas">
+            <KpiCard
+              icon={<MetricIcon tone="blue"><FaChalkboardTeacher /></MetricIcon>}
+              label="Kelas Unit"
+              value={formatNumber(summary.total_kelas || 0)}
+              accent="info"
+            />
+          </div>
+        ) : null}
+        {!isUnitScope ? (
+          <>
+        <div className="dashboard-kpi-wrap dashboard-kpi-wrap--kelas">
+          <KpiCard
+            icon={<MetricIcon tone="blue"><FaChalkboardTeacher /></MetricIcon>}
+            label="Total Kelas"
+            value={formatNumber(summary.total_kelas || 0)}
+            accent="info"
           />
         </div>
         <div className="dashboard-kpi-wrap dashboard-kpi-wrap--alumni">
@@ -174,6 +195,8 @@ function DashboardMetrics({ summary }) {
             accent={tunggakan > 0 ? "danger" : "primary"}
           />
         </div>
+          </>
+        ) : null}
       </KpiGrid>
     </>
   );
