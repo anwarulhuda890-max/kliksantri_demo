@@ -8,9 +8,12 @@ import TagihanTable from "../components/pembayaran/TagihanTable";
 import BayarModal from "../components/pembayaran/BayarModal";
 import HistoriModal from "../components/pembayaran/HistoriModal";
 import SahriyahInvoiceModal from "../components/sahriyah/SahriyahInvoiceModal";
+import KpiCard from "../components/ui/KpiCard";
+import KpiGrid from "../components/ui/KpiGrid";
 import { useActiveUnit } from "../context/ActiveUnitContext";
 import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 import { DEFAULT_PAGE_SIZE } from "../hooks/useClientPagination";
+import { formatCurrency } from "../utils/formatCurrency";
 import {
   KeuanganResponsiveStyles,
   getApiError,
@@ -58,6 +61,11 @@ function PembayaranPage() {
     limit: DEFAULT_PAGE_SIZE,
     offset: 0,
     total: 0,
+  });
+  const [summary, setSummary] = useState({
+    nominal_tagihan: 0,
+    sudah_dibayar: 0,
+    sisa_belum_dibayar: 0,
   });
   const [page, setPage] = useState(1);
   const [isLoadingTable, setIsLoadingTable] = useState(false);
@@ -110,6 +118,11 @@ function PembayaranPage() {
 
         const response = await api.get("/pembayaran", { params });
         setPembayaran(response.data.data || []);
+        setSummary(response.data.summary || {
+          nominal_tagihan: 0,
+          sudah_dibayar: 0,
+          sisa_belum_dibayar: 0,
+        });
         setPagination(
           response.data.pagination || {
             limit: DEFAULT_PAGE_SIZE,
@@ -502,6 +515,26 @@ function PembayaranPage() {
           isGenerating={isGenerating}
           unitScopeParams={writeScopeParams}
         />
+
+        <div style={{ marginTop: "var(--space-6)" }}>
+          <KpiGrid>
+            <KpiCard
+              label="Nominal Tagihan"
+              value={formatCurrency(summary.nominal_tagihan || 0)}
+              accent="neutral"
+            />
+            <KpiCard
+              label="Sudah Dibayar"
+              value={formatCurrency(summary.sudah_dibayar || 0)}
+              accent="success"
+            />
+            <KpiCard
+              label="Sisa Belum Dibayar"
+              value={formatCurrency(summary.sisa_belum_dibayar || 0)}
+              accent="warning"
+            />
+          </KpiGrid>
+        </div>
 
         <div style={{ marginTop: "var(--space-6)" }}>
           <TagihanTable

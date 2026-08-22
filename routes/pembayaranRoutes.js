@@ -424,6 +424,19 @@ router.get("/", async (req, res) => {
 
     const total = countResult.rows[0]?.total || 0;
 
+    const summaryResult = await pool.query(
+      `SELECT
+         COALESCE(SUM(p.nominal_tagihan), 0)::bigint AS nominal_tagihan,
+         COALESCE(SUM(p.nominal_bayar), 0)::bigint AS sudah_dibayar,
+         (COALESCE(SUM(p.nominal_tagihan), 0) - COALESCE(SUM(p.nominal_bayar), 0))::bigint AS sisa_belum_dibayar
+       FROM pembayaran p
+       LEFT JOIN santri s
+         ON p.santri_id = s.id
+        AND s.tenant_id = p.tenant_id
+       WHERE ${scopedWhereSql}`,
+      scopedParams,
+    );
+
     let listSql = `
       SELECT p.*, s.nama, s.nis, s.kamar, lpd.latest_invoice_id
       FROM pembayaran p
@@ -454,6 +467,11 @@ router.get("/", async (req, res) => {
     res.json({
       success: true,
       data: result.rows,
+      summary: {
+        nominal_tagihan: Number(summaryResult.rows[0]?.nominal_tagihan || 0),
+        sudah_dibayar: Number(summaryResult.rows[0]?.sudah_dibayar || 0),
+        sisa_belum_dibayar: Number(summaryResult.rows[0]?.sisa_belum_dibayar || 0),
+      },
       access: { all_units: access.mode === "ALL", unit_id: access.mode === "UNIT" ? access.unitId : null },
       pagination: buildPaginationResponse({
         hasPagingParams: paging.hasPagingParams,
