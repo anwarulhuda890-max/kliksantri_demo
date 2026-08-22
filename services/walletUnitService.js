@@ -34,6 +34,40 @@ async function getWalletAccountForSantri(client, { tenantId, unitId, santriId, l
   return rows[0] || null;
 }
 
+async function getOrCreateWalletAccountForSantri(client, { tenantId, unitId, santriId }) {
+  const membership = await client.query(
+    `SELECT s.id AS santri_id, s.nama, s.status AS santri_status
+     FROM santri_units su
+     JOIN santri s
+       ON s.id = su.santri_id
+      AND s.tenant_id = su.tenant_id
+     WHERE su.tenant_id = $1
+       AND su.unit_id = $2
+       AND su.santri_id = $3
+       AND su.status = 'active'
+       AND su.left_at IS NULL
+     LIMIT 1`,
+    [tenantId, unitId, santriId],
+  );
+
+  if (membership.rows.length === 0) return null;
+
+  const { rows } = await client.query(
+    `INSERT INTO wallet_accounts (tenant_id, unit_id, santri_id, current_balance, status)
+     VALUES ($1, $2, $3, 0, 'active')
+     ON CONFLICT (tenant_id, unit_id, santri_id) DO UPDATE
+       SET updated_at = wallet_accounts.updated_at
+     RETURNING id, tenant_id, unit_id, santri_id, current_balance, status`,
+    [tenantId, unitId, santriId],
+  );
+
+  return {
+    ...rows[0],
+    nama: membership.rows[0].nama,
+    santri_status: membership.rows[0].santri_status,
+  };
+}
+
 function isSantriAktif(status) {
   const normalized = String(status ?? "aktif").trim().toLowerCase();
   return normalized === "" || normalized === "aktif" || normalized === "active";
@@ -41,6 +75,7 @@ function isSantriAktif(status) {
 
 module.exports = {
   getWalletAccountForSantri,
+  getOrCreateWalletAccountForSantri,
   isSantriAktif,
   resolveWalletAccess,
   sendUnitError,

@@ -7,6 +7,7 @@ const {
 const { isSantriAktif } = require("../utils/santriStatus");
 const {
   getWalletAccountForSantri,
+  getOrCreateWalletAccountForSantri,
   resolveWalletAccess,
   sendUnitError,
 } = require("../services/walletUnitService");
@@ -848,21 +849,27 @@ async(req,res)=>{
           s.nis,
           s.nama,
           s.uid_rfid,
-          wa.current_balance AS saldo,
+          COALESCE(wa.current_balance, 0) AS saldo,
           s.status,
           s.kelas_id,
           k.nama_kelas,
-          wa.unit_id,
+          su.unit_id,
           wa.id AS wallet_account_id
-        FROM wallet_accounts wa
+        FROM santri_units su
         JOIN santri s
-          ON s.id = wa.santri_id
-         AND s.tenant_id = wa.tenant_id
+          ON s.id = su.santri_id
+         AND s.tenant_id = su.tenant_id
         LEFT JOIN kelas k
           ON k.id = s.kelas_id
          AND k.tenant_id = s.tenant_id
-        WHERE wa.tenant_id = $1
-          AND wa.unit_id = $2
+        LEFT JOIN wallet_accounts wa
+          ON wa.tenant_id = su.tenant_id
+         AND wa.unit_id = su.unit_id
+         AND wa.santri_id = su.santri_id
+        WHERE su.tenant_id = $1
+          AND su.unit_id = $2
+          AND su.status = 'active'
+          AND su.left_at IS NULL
           AND (
             s.nama ILIKE $3
             OR s.nis ILIKE $3
@@ -923,11 +930,10 @@ async(req,res)=>{
     );
 
     const access = await resolveWalletAccess(req, client, { requireSpecific: true });
-    const walletAccount = await getWalletAccountForSantri(client, {
+    const walletAccount = await getOrCreateWalletAccountForSantri(client, {
       tenantId,
       unitId: access.unitId,
       santriId: Number(santri_id),
-      lock: true,
     });
 
     if(!walletAccount){
