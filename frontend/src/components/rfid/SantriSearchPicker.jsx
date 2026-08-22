@@ -15,6 +15,7 @@ function SantriSearchPicker({
   required = false,
   selectedSantri = null,
   className = "",
+  params = null,
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -59,7 +60,7 @@ function SantriSearchPicker({
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await api.get("/rfid/santri/search", {
-          params: { search: q, limit: SEARCH_LIMIT },
+          params: { ...(params || {}), search: q, limit: SEARCH_LIMIT },
         });
         setMatches(res.data.data || []);
       } catch (err) {
@@ -75,7 +76,7 @@ function SantriSearchPicker({
         clearTimeout(debounceRef.current);
       }
     };
-  }, [query]);
+  }, [params, query]);
 
   const handleSelect = (santri) => {
     onChange(String(santri.id));

@@ -1,5 +1,10 @@
 const crypto = require("node:crypto");
 const pool = require("../db");
+const {
+  getWalletAccountForSantri,
+  resolveWalletAccess,
+  sendUnitError,
+} = require("../services/walletUnitService");
 
 function isSantriAktif(status) {
   const normalized = String(status ?? "aktif").trim().toLowerCase();
@@ -34,22 +39,21 @@ exports.withdrawSaldo = async (req, res) => {
 
   try {
     await client.query("BEGIN");
+    const access = await resolveWalletAccess(req, client, { requireSpecific: true });
 
-    const { rows } = await client.query(
-      `SELECT id, nama, saldo, status
-       FROM santri
-       WHERE id = $1 AND tenant_id = $2
-       FOR UPDATE`,
-      [santriId, tenantId],
-    );
+    const walletAccount = await getWalletAccountForSantri(client, {
+      tenantId,
+      unitId: access.unitId,
+      santriId,
+      lock: true,
+    });
 
-    if (rows.length === 0) {
+    if (!walletAccount) {
       await client.query("ROLLBACK");
       return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
     }
 
-    const santri = rows[0];
-    if (!isSantriAktif(santri.status)) {
+    if (!isSantriAktif(walletAccount.santri_status)) {
       await client.query("ROLLBACK");
       return res.status(409).json({
         success: false,
@@ -57,7 +61,7 @@ exports.withdrawSaldo = async (req, res) => {
       });
     }
 
-    const saldoAwal = Number(santri.saldo || 0);
+    const saldoAwal = Number(walletAccount.current_balance || 0);
     if (saldoAwal < nominal) {
       await client.query("ROLLBACK");
       return res.status(409).json({
@@ -71,16 +75,31 @@ exports.withdrawSaldo = async (req, res) => {
     const trxId = `WITHDRAWAL-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 
     await client.query(
-      `UPDATE santri SET saldo = $1 WHERE id = $2 AND tenant_id = $3`,
-      [saldoAkhir, santriId, tenantId],
+      `UPDATE wallet_accounts
+       SET current_balance = $1,
+           updated_at = NOW()
+       WHERE id = $2 AND tenant_id = $3 AND unit_id = $4`,
+      [saldoAkhir, walletAccount.id, tenantId, access.unitId],
     );
 
     await client.query(
-      `INSERT INTO transaksi_rfid
-       (trx_uuid, trx_id, santri_id, nominal, saldo_awal, saldo_akhir,
-        trx_type, sync_status, tenant_id)
-       VALUES ($1, $2, $3, $4, $5, $6, 'withdrawal', 'synced', $7)`,
-      [crypto.randomUUID(), trxId, santriId, nominal, saldoAwal, saldoAkhir, tenantId],
+      `INSERT INTO wallet_transactions (
+         wallet_account_id, tenant_id, unit_id, santri_id, type, direction,
+         amount, balance_after, reference_type, reference_id, source,
+         actor_user_id, location_unit_id, idempotency_key
+       )
+       VALUES ($1, $2, $3, $4, 'withdrawal', 'debit', $5, $6, 'manual_withdrawal', $7, 'admin', $8, $3, $9)`,
+      [
+        walletAccount.id,
+        tenantId,
+        access.unitId,
+        santriId,
+        nominal,
+        saldoAkhir,
+        trxId,
+        req.user?.id || null,
+        `${tenantId}:${access.unitId}:${trxId}`,
+      ],
     );
 
     await client.query(
@@ -93,7 +112,7 @@ exports.withdrawSaldo = async (req, res) => {
     await client.query(
       `INSERT INTO audit_logs (device_id, event_type, detail, tenant_id)
        VALUES ('BACKEND', 'WALLET_WITHDRAWAL', $1, $2)`,
-      [`${santri.nama} | Rp ${nominal} | ${keterangan}`, tenantId],
+      [`${walletAccount.nama} | Rp ${nominal} | ${keterangan}`, tenantId],
     );
 
     await client.query("COMMIT");
@@ -113,7 +132,7 @@ exports.withdrawSaldo = async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("[wallet.withdrawSaldo]", err);
-    return res.status(500).json({ success: false, error: "Penarikan saldo gagal" });
+    return sendUnitError(res, err, "Penarikan saldo gagal");
   } finally {
     client.release();
   }

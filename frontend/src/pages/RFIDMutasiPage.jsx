@@ -11,6 +11,8 @@ import SearchInput from "../components/ui/SearchInput";
 import EmptyState from "../components/ui/EmptyState";
 import { Table, TableScroll, TablePagination, useClientPagination } from "../components/ui/table";
 import { FilterBar, FormField, Select } from "../components/ui/form";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams } from "../utils/unitScopeParams";
 
 function trxTypeLabel(trxType) {
   if (trxType === "topup") return "TOPUP";
@@ -21,6 +23,11 @@ function trxTypeLabel(trxType) {
 }
 
 function RFIDMutasiPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const [santri, setSantri] = useState([]);
   const [infoSantri, setInfoSantri] = useState(null);
   const [selectedSantri, setSelectedSantri] = useState("");
@@ -29,7 +36,7 @@ function RFIDMutasiPage() {
 
   const loadSantri = async () => {
     try {
-      const res = await api.get("/santri");
+      const res = await api.get("/santri", { params: readScopeParams });
       setSantri(res.data.data || []);
     } catch (err) {
       console.error(err);
@@ -37,10 +44,12 @@ function RFIDMutasiPage() {
   };
 
   const loadMutasi = async () => {
-    if (!selectedSantri) return;
+    if (!selectedSantri || !activeUnitId) return;
 
     try {
-      const res = await api.get(`/rfid/mutasi?santri_id=${selectedSantri}`);
+      const res = await api.get("/rfid/mutasi", {
+        params: { unit_id: activeUnitId, santri_id: selectedSantri },
+      });
       const rows = res.data.data || [];
 
       
@@ -61,11 +70,11 @@ function RFIDMutasiPage() {
 
   useEffect(() => {
     loadSantri();
-  }, []);
+  }, [readScopeParams]);
 
   useEffect(() => {
     loadMutasi();
-  }, [selectedSantri]);
+  }, [activeUnitId, selectedSantri]);
 
   const filteredMutasi = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();

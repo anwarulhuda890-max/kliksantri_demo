@@ -17,6 +17,36 @@ const { isSantriAktif, SQL_SANTri_AKTIF } = require("../utils/santriStatus");
 const notificationService = require("../services/notificationService");
 const requirePermission = require("../middleware/requirePermission");
 const { getScopedKelasIds, assertSantriInScopedUnit } = require("../middleware/dataUnitScope");
+const { accessError, resolveActiveUnit } = require("../services/unitAccessService");
+
+function sendUnitError(res, error, fallback = "Gagal memproses pembayaran") {
+  res.status(error.status || 500).json({
+    success: false,
+    error: error.status ? error.message : fallback,
+    code: error.code,
+  });
+}
+
+function requireUnitScope(access) {
+  if (access.mode !== "UNIT") {
+    throw accessError("Pilih unit aktif", 400, "UNIT_REQUIRED");
+  }
+}
+
+async function getSantriUnitInActiveUnit(client, tenantId, santriId, unitId) {
+  const { rows } = await client.query(
+    `SELECT su.id AS santri_unit_id, su.unit_id
+     FROM santri_units su
+     WHERE su.tenant_id = $1
+       AND su.santri_id = $2
+       AND su.unit_id = $3
+       AND su.status = 'active'
+       AND su.left_at IS NULL
+     LIMIT 1`,
+    [tenantId, santriId, unitId],
+  );
+  return rows[0] || null;
+}
 
 async function resolveGenerateTargetIds(client, tenantId, { scope, kelas_id, santri_ids, scopedKelasIds }) {
   const scopeClause = scopedKelasIds ? " AND s.kelas_id = ANY($3::int[])" : "";
@@ -60,10 +90,16 @@ async function resolveGenerateTargetIds(client, tenantId, { scope, kelas_id, san
   return result.rows.map((row) => row.id);
 }
 
-function buildPembayaranFilters(tenantId, query) {
+function buildPembayaranFilters(tenantId, query, access) {
   const conditions = ["p.tenant_id = $1"];
   const params = [tenantId];
   let index = 2;
+
+  if (access?.mode === "UNIT") {
+    conditions.push(`p.unit_id = $${index}`);
+    params.push(access.unitId);
+    index += 1;
+  }
 
   if (query.bulan) {
     const variants = getBulanFilterVariants(query.bulan);
@@ -197,17 +233,18 @@ async function resolveJenisTagihanId(client, tenantId, namaTagihan) {
   return inserted.rows[0].id;
 }
 
-async function findExistingPembayaran(client, tenantId, santriId, jenisTagihanId, bulan, tahun) {
+async function findExistingPembayaran(client, tenantId, santriId, unitId, jenisTagihanId, bulan, tahun) {
   const result = await client.query(
     `SELECT id
      FROM pembayaran
      WHERE tenant_id = $1
        AND santri_id = $2
-       AND jenis_tagihan_id = $3
-       AND bulan = $4
-       AND tahun = $5
+       AND unit_id = $3
+       AND jenis_tagihan_id = $4
+       AND bulan = $5
+       AND tahun = $6
      LIMIT 1`,
-    [tenantId, santriId, jenisTagihanId, String(bulan), Number(tahun)]
+    [tenantId, santriId, unitId, jenisTagihanId, String(bulan), Number(tahun)]
   );
 
   return result.rows[0] || null;
@@ -216,6 +253,8 @@ async function findExistingPembayaran(client, tenantId, santriId, jenisTagihanId
 async function insertPembayaran(client, tenantId, payload) {
   const {
     santri_id,
+    unit_id,
+    santri_unit_id,
     jenis_tagihan_id,
     nama_tagihan,
     bulan,
@@ -231,13 +270,16 @@ async function insertPembayaran(client, tenantId, payload) {
 
   const result = await client.query(
     `INSERT INTO pembayaran (
-       santri_id, jenis_tagihan_id, nama_tagihan, bulan, tahun,
-       nominal_tagihan, nominal_bayar, sisa_tunggakan, status, tenant_id
+       santri_id, unit_id, santri_unit_id, jenis_tagihan_id, nama_tagihan, bulan, tahun,
+       nominal_tagihan, nominal_bayar, sisa_tunggakan, sisa_tagihan, status,
+       tenant_id, settlement_destination, actor_user_id, source
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11, $12, 'unit_cash', $13, 'manual')
      RETURNING *`,
     [
       santri_id,
+      unit_id,
+      santri_unit_id,
       jenis_tagihan_id,
       nama_tagihan,
       normalizeBulanToName(bulan) || String(bulan),
@@ -247,6 +289,7 @@ async function insertPembayaran(client, tenantId, payload) {
       sisa_tunggakan,
       status,
       tenantId,
+      payload.actor_user_id || null,
     ]
   );
 
@@ -255,10 +298,12 @@ async function insertPembayaran(client, tenantId, payload) {
 
 router.get("/", async (req, res) => {
   try {
+    const access = await resolveActiveUnit(req);
     const paging = parsePagination(req.query, { defaultLimit: 20, maxLimit: 200 });
     const { whereSql, params, nextIndex } = buildPembayaranFilters(
       req.tenantId,
       req.query,
+      access,
     );
     const scopedKelasIds = await getScopedKelasIds(req);
     const scopedWhereSql = scopedKelasIds
@@ -309,6 +354,7 @@ router.get("/", async (req, res) => {
     res.json({
       success: true,
       data: result.rows,
+      access: { all_units: access.mode === "ALL", unit_id: access.mode === "UNIT" ? access.unitId : null },
       pagination: buildPaginationResponse({
         hasPagingParams: paging.hasPagingParams,
         limit: paging.limit,
@@ -319,7 +365,7 @@ router.get("/", async (req, res) => {
     });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err);
   }
 });
 
@@ -327,6 +373,8 @@ router.get("/generate-preview", async (req, res) => {
   const client = await pool.connect();
 
   try {
+    const access = await resolveActiveUnit(req, client);
+    requireUnitScope(access);
     const scope = req.query.scope || "all";
     const kelas_id = req.query.kelas_id;
     const santri_ids = String(req.query.santri_ids || "")
@@ -348,7 +396,7 @@ router.get("/generate-preview", async (req, res) => {
     });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err);
   } finally {
     client.release();
   }
@@ -358,6 +406,8 @@ router.post("/generate", async (req, res) => {
   const client = await pool.connect();
 
   try {
+    const access = await resolveActiveUnit(req, client);
+    requireUnitScope(access);
     const {
       santri_ids = [],
       scope,
@@ -441,11 +491,17 @@ router.post("/generate", async (req, res) => {
         skipped_count += 1;
         continue;
       }
+      const membership = await getSantriUnitInActiveUnit(client, req.tenantId, santriId, access.unitId);
+      if (!membership) {
+        skipped_count += 1;
+        continue;
+      }
 
       const existing = await findExistingPembayaran(
         client,
         req.tenantId,
         santriId,
+        access.unitId,
         jenisTagihanId,
         bulan,
         tahun
@@ -458,12 +514,15 @@ router.post("/generate", async (req, res) => {
 
       const created = await insertPembayaran(client, req.tenantId, {
         santri_id: santriId,
+        unit_id: access.unitId,
+        santri_unit_id: membership.santri_unit_id,
         jenis_tagihan_id: jenisTagihanId,
         nama_tagihan: String(nama_tagihan).trim(),
         bulan: normalizeBulanToName(bulan) || bulan,
         tahun,
         nominal_tagihan,
         nominal_bayar: 0,
+        actor_user_id: req.user?.id,
       });
 
       createdRows.push(created);
@@ -500,10 +559,7 @@ router.post("/generate", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.log(err);
-    res.status(500).json({
-      success: false,
-      error: err.message || "Gagal generate tagihan",
-    });
+    sendUnitError(res, err, err.message || "Gagal generate tagihan");
   } finally {
     client.release();
   }
@@ -513,6 +569,8 @@ router.post("/", async (req, res) => {
   const client = await pool.connect();
 
   try {
+    const access = await resolveActiveUnit(req, client);
+    requireUnitScope(access);
     const {
       santri_id,
       nama_tagihan,
@@ -528,6 +586,8 @@ router.post("/", async (req, res) => {
     }
     const scopeCheck = await assertSantriInScopedUnit(req, santri_id, client);
     if (!scopeCheck.ok) return res.status(403).json({ success: false, error: scopeCheck.error });
+    const membership = await getSantriUnitInActiveUnit(client, req.tenantId, santri_id, access.unitId);
+    if (!membership) return res.status(403).json({ success: false, error: "Santri berada di luar unit aktif", code: "UNIT_ACCESS_DENIED" });
 
     await client.query("BEGIN");
 
@@ -541,6 +601,7 @@ router.post("/", async (req, res) => {
       client,
       req.tenantId,
       santri_id,
+      access.unitId,
       jenisTagihanId,
       bulan,
       tahun
@@ -557,12 +618,15 @@ router.post("/", async (req, res) => {
 
     const row = await insertPembayaran(client, req.tenantId, {
       santri_id,
+      unit_id: access.unitId,
+      santri_unit_id: membership.santri_unit_id,
       jenis_tagihan_id: jenisTagihanId,
       nama_tagihan: String(nama_tagihan).trim(),
       bulan,
       tahun,
       nominal_tagihan,
       nominal_bayar,
+      actor_user_id: req.user?.id,
     });
 
     await client.query("COMMIT");
@@ -586,7 +650,7 @@ router.post("/", async (req, res) => {
   } catch (err) {
     await client.query("ROLLBACK");
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal membuat tagihan");
   } finally {
     client.release();
   }
@@ -594,6 +658,8 @@ router.post("/", async (req, res) => {
 
 router.put("/bayar/:id", async (req, res) => {
   try {
+    const access = await resolveActiveUnit(req);
+    requireUnitScope(access);
     const { nominal, petugas } = req.body;
 
     const pembayaran = await pool.query(
@@ -611,6 +677,9 @@ router.put("/bayar/:id", async (req, res) => {
     }
 
     const data = pembayaran.rows[0];
+    if (Number(data.unit_id) !== Number(access.unitId)) {
+      return res.status(403).json({ success: false, error: "Akses unit ditolak", code: "UNIT_ACCESS_DENIED" });
+    }
 
     if (isStatusLunas(data.status)) {
       return res.status(409).json({
@@ -636,7 +705,7 @@ router.put("/bayar/:id", async (req, res) => {
              WHEN $4::varchar = 'lunas' THEN CURRENT_DATE
              ELSE tanggal_bayar
            END
-       WHERE id = $5 AND tenant_id = $6`,
+       WHERE id = $5 AND tenant_id = $6 AND unit_id = $7`,
       [
         totalBayarBaru,
         Math.max(0, sisaBaru),
@@ -644,14 +713,27 @@ router.put("/bayar/:id", async (req, res) => {
         status,
         req.params.id,
         req.tenantId,
+        access.unitId,
       ]
     );
 
     const detailResult = await pool.query(
-      `INSERT INTO pembayaran_detail (pembayaran_id, nominal, petugas, tenant_id)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO pembayaran_detail (
+         pembayaran_id, nominal, petugas, tenant_id, unit_id, santri_unit_id,
+         settlement_destination, actor_user_id, source
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'unit_cash'), $8, 'manual')
        RETURNING id`,
-      [req.params.id, nominal, petugas, req.tenantId]
+      [
+        req.params.id,
+        nominal,
+        petugas,
+        req.tenantId,
+        access.unitId,
+        data.santri_unit_id,
+        data.settlement_destination,
+        req.user?.id || null,
+      ]
     );
     const invoiceId = detailResult.rows[0]?.id;
 
@@ -671,12 +753,14 @@ router.put("/bayar/:id", async (req, res) => {
     res.json({ success: true, invoice_id: invoiceId });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal menyimpan pembayaran");
   }
 });
 
 router.delete("/:id", requirePermission("pembayaran.manage"), async (req, res) => {
   try {
+    const access = await resolveActiveUnit(req);
+    requireUnitScope(access);
     const owned = await assertPembayaranInTenant(req.tenantId, req.params.id);
     if (!owned.ok) {
       return res.status(404).json({ success: false, error: owned.error });
@@ -685,9 +769,12 @@ router.delete("/:id", requirePermission("pembayaran.manage"), async (req, res) =
     const pembayaran = await pool.query(
       `SELECT id, nominal_bayar
        FROM pembayaran
-       WHERE id = $1 AND tenant_id = $2`,
-      [req.params.id, req.tenantId]
+       WHERE id = $1 AND tenant_id = $2 AND unit_id = $3`,
+      [req.params.id, req.tenantId, access.unitId]
     );
+    if (pembayaran.rows.length === 0) {
+      return res.status(403).json({ success: false, error: "Akses unit ditolak", code: "UNIT_ACCESS_DENIED" });
+    }
 
     const detail = await pool.query(
       `SELECT COUNT(*)::int AS total
@@ -709,9 +796,9 @@ router.delete("/:id", requirePermission("pembayaran.manage"), async (req, res) =
 
     const result = await pool.query(
       `DELETE FROM pembayaran
-       WHERE id = $1 AND tenant_id = $2
+       WHERE id = $1 AND tenant_id = $2 AND unit_id = $3
        RETURNING id`,
-      [req.params.id, req.tenantId]
+      [req.params.id, req.tenantId, access.unitId]
     );
 
     if (result.rows.length === 0) {
@@ -721,29 +808,36 @@ router.delete("/:id", requirePermission("pembayaran.manage"), async (req, res) =
     res.json({ success: true });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal menghapus pembayaran");
   }
 });
 
 router.get("/riwayat/:id", async (req, res) => {
   try {
+    const access = await resolveActiveUnit(req);
+    requireUnitScope(access);
     const owned = await assertPembayaranInTenant(req.tenantId, req.params.id);
     if (!owned.ok) {
       return res.status(404).json({ success: false, error: owned.error });
     }
 
     const result = await pool.query(
-      `SELECT *
-       FROM pembayaran_detail
-       WHERE pembayaran_id = $1 AND tenant_id = $2
+      `SELECT pd.*
+       FROM pembayaran_detail pd
+       JOIN pembayaran p
+         ON p.id = pd.pembayaran_id
+        AND p.tenant_id = pd.tenant_id
+       WHERE pd.pembayaran_id = $1
+         AND pd.tenant_id = $2
+         AND p.unit_id = $3
        ORDER BY id DESC`,
-      [req.params.id, req.tenantId]
+      [req.params.id, req.tenantId, access.unitId]
     );
 
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendUnitError(res, err, err.message || "Gagal memuat riwayat pembayaran");
   }
 });
 

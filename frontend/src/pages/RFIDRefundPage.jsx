@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaUndo } from "react-icons/fa";
 import AppShell from "../layouts/AppShell";
 import api from "../services/api";
@@ -15,6 +15,8 @@ import { Table, TableScroll, TableActions, TablePagination } from "../components
 import { FilterBar, FormField, Input, FormActionBar } from "../components/ui/form";
 import { DEFAULT_PAGE_SIZE } from "../hooks/useClientPagination";
 import { formatCurrency } from "../utils/formatCurrency";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams } from "../utils/unitScopeParams";
 
 function trxTypeLabel(trxType) {
   if (trxType === "payment") return "PEMBAYARAN";
@@ -38,6 +40,15 @@ function getDefaultDateRange() {
 }
 
 function RFIDRefundPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const scopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
+  const writeScopeParams = useMemo(
+    () => (activeUnitId ? { unit_id: activeUnitId } : null),
+    [activeUnitId],
+  );
   const defaultRange = getDefaultDateRange();
   const [selectedSantri, setSelectedSantri] = useState(null);
   const [santriId, setSantriId] = useState("");
@@ -65,6 +76,7 @@ function RFIDRefundPage() {
 
       try {
         const params = {
+          ...scopeParams,
           type: "payment",
           santri_id: santriId,
           start_date: startDate,
@@ -88,7 +100,7 @@ function RFIDRefundPage() {
         setIsLoading(false);
       }
     },
-    [santriId, startDate, endDate, tableSearch],
+    [santriId, startDate, endDate, tableSearch, scopeParams],
   );
 
   useEffect(() => {
@@ -151,6 +163,7 @@ function RFIDRefundPage() {
             onChange={setSantriId}
             onSelect={setSelectedSantri}
             selectedSantri={selectedSantri}
+            params={writeScopeParams}
             className="rfid-filter-santri"
             required
           />

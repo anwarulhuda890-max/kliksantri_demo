@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
 import { exportExcel } from "../utils/exportExcel";
@@ -8,6 +8,8 @@ import TagihanTable from "../components/pembayaran/TagihanTable";
 import BayarModal from "../components/pembayaran/BayarModal";
 import HistoriModal from "../components/pembayaran/HistoriModal";
 import SahriyahInvoiceModal from "../components/sahriyah/SahriyahInvoiceModal";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 import { DEFAULT_PAGE_SIZE } from "../hooks/useClientPagination";
 import {
   KeuanganResponsiveStyles,
@@ -42,6 +44,15 @@ function buildListParams({
 }
 
 function PembayaranPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
+  const writeScopeParams = useMemo(
+    () => (activeUnitId ? { unit_id: activeUnitId } : null),
+    [activeUnitId],
+  );
   const [pembayaran, setPembayaran] = useState([]);
   const [pagination, setPagination] = useState({
     limit: DEFAULT_PAGE_SIZE,
@@ -95,6 +106,7 @@ function PembayaranPage() {
           tableSearch,
           page: pageNum,
         });
+        Object.assign(params, readScopeParams);
 
         const response = await api.get("/pembayaran", { params });
         setPembayaran(response.data.data || []);
@@ -113,12 +125,16 @@ function PembayaranPage() {
         setIsLoadingTable(false);
       }
     },
-    [filterBulan, filterTahun, filterJenis, filterStatus, tableSearch],
+    [filterBulan, filterTahun, filterJenis, filterStatus, tableSearch, readScopeParams],
   );
 
   const fetchPreview = useCallback(async () => {
     try {
-      const params = { scope: "all" };
+      if (!activeUnitId) {
+        setPreviewCount(0);
+        return;
+      }
+      const params = { scope: "all", unit_id: activeUnitId };
 
       if (modeGenerate === "kelas") {
         params.scope = "kelas";
@@ -140,10 +156,13 @@ function PembayaranPage() {
       console.error(err);
       setPreviewCount(0);
     }
-  }, [modeGenerate, selectedKelas, selectedSantriItems]);
+  }, [activeUnitId, modeGenerate, selectedKelas, selectedSantriItems]);
 
   useEffect(() => {
     getKelas();
+  }, [readScopeParams]);
+
+  useEffect(() => {
     getJenisTagihan();
   }, []);
 
@@ -169,7 +188,7 @@ function PembayaranPage() {
 
   const getKelas = async () => {
     try {
-      const response = await api.get("/kelas");
+      const response = await api.get("/kelas", { params: readScopeParams });
       setKelas(response.data.data);
     } catch (err) {
       console.error(err);
@@ -222,6 +241,14 @@ function PembayaranPage() {
       return;
     }
 
+    let writeScope;
+    try {
+      writeScope = requireActiveUnitForWrite({ activeUnitId });
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+
     const targetCount =
       scope === "selected" ? selectedSantriItems.length : previewCount;
 
@@ -242,6 +269,7 @@ function PembayaranPage() {
         bulan: normalizedBulan,
         tahun: Number(form.tahun),
         nominal_tagihan: Number(form.nominal_tagihan),
+        ...writeScope,
       };
 
       if (scope === "kelas") payload.kelas_id = Number(selectedKelas);
@@ -313,6 +341,7 @@ function PembayaranPage() {
       const response = await api.put(`/pembayaran/bayar/${selectedTagihan.id}`, {
         nominal: Number(nominalBayar),
         petugas: user?.nama || user?.username || "Admin",
+        unit_id: activeUnitId,
       });
 
       alert("Pembayaran berhasil");
@@ -337,7 +366,7 @@ function PembayaranPage() {
     if (!yakin) return;
 
     try {
-      await api.delete(`/pembayaran/${id}`);
+      await api.delete(`/pembayaran/${id}`, { params: { unit_id: activeUnitId } });
       await fetchPembayaran(page);
     } catch (err) {
       console.error(err);
@@ -347,7 +376,9 @@ function PembayaranPage() {
 
   const lihatRiwayat = async (tagihan) => {
     try {
-      const response = await api.get(`/pembayaran/riwayat/${tagihan.id}`);
+      const response = await api.get(`/pembayaran/riwayat/${tagihan.id}`, {
+        params: { unit_id: activeUnitId },
+      });
       setRiwayat(response.data.data);
       setShowRiwayat(true);
     } catch (err) {
@@ -425,6 +456,7 @@ function PembayaranPage() {
         page: 1,
         limit: 10000,
       });
+      Object.assign(params, readScopeParams);
 
       const response = await api.get("/pembayaran", { params });
       const rows = (response.data.data || []).map((p) => ({
@@ -467,6 +499,7 @@ function PembayaranPage() {
           setForm={setForm}
           onSubmit={createPembayaran}
           isGenerating={isGenerating}
+          unitScopeParams={writeScopeParams}
         />
 
         <div style={{ marginTop: "var(--space-6)" }}>

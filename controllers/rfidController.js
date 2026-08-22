@@ -5,6 +5,11 @@ const {
   buildPaginationResponse,
 } = require("../utils/paginationHelpers");
 const { isSantriAktif } = require("../utils/santriStatus");
+const {
+  getWalletAccountForSantri,
+  resolveWalletAccess,
+  sendUnitError,
+} = require("../services/walletUnitService");
 
 const crypto = require("crypto");
 
@@ -385,71 +390,83 @@ async (req,res)=>{
 
   try{
     const tenantId = req.tenantId;
+    const access = await resolveWalletAccess(req);
+    const unitFilter = access.mode === "UNIT" ? " AND unit_id = $2" : "";
+    const unitParams = access.mode === "UNIT" ? [tenantId, access.unitId] : [tenantId];
+    const walletTxUnitFilter = access.mode === "UNIT" ? " AND wt.unit_id = $2" : "";
+    const walletTxParams = unitParams;
 
     const totalSaldo =
       await pool.query(`
-        SELECT COALESCE(SUM(saldo), 0) total
-        FROM santri
-        WHERE tenant_id = $1
-      `, [tenantId]);
+        SELECT COALESCE(SUM(current_balance), 0) total
+        FROM wallet_accounts
+        WHERE tenant_id = $1${unitFilter}
+      `, unitParams);
 
     const totalMerchant =
       await pool.query(`
         SELECT COUNT(*)
         FROM merchant_rfid
-        WHERE status=true AND tenant_id = $1
-      `, [tenantId]);
+        WHERE status=true AND tenant_id = $1${unitFilter}
+      `, unitParams);
 
     const totalDevice =
       await pool.query(`
         SELECT COUNT(*)
         FROM devices
-        WHERE tenant_id = $1
-      `, [tenantId]);
+        WHERE tenant_id = $1${unitFilter}
+      `, unitParams);
 
     const online =
       await pool.query(`
         SELECT COUNT(*)
         FROM devices
-        WHERE status='online' AND tenant_id = $1
-      `, [tenantId]);
+        WHERE status='online' AND tenant_id = $1${unitFilter}
+      `, unitParams);
 
     const offline =
       await pool.query(`
         SELECT COUNT(*)
         FROM devices
-        WHERE status!='online' AND tenant_id = $1
-      `, [tenantId]);
+        WHERE status!='online' AND tenant_id = $1${unitFilter}
+      `, unitParams);
 
     const transaksiHariIni =
       await pool.query(`
-        SELECT COALESCE(SUM(nominal), 0) total
-        FROM transaksi_rfid
+        SELECT COALESCE(SUM(amount) FILTER (WHERE direction = 'debit'), 0) total
+        FROM wallet_transactions wt
         WHERE DATE(created_at) = CURRENT_DATE
-          AND tenant_id = $1
-      `, [tenantId]);
+          AND tenant_id = $1${walletTxUnitFilter}
+      `, walletTxParams);
 
     const pending =
-      await pool.query(`
-        SELECT COUNT(*)
-        FROM rfid_sync_queue
-        WHERE sync_status='pending' AND tenant_id = $1
-      `, [tenantId]);
+      access.mode === "UNIT"
+        ? { rows: [{ count: 0 }] }
+        : await pool.query(`
+          SELECT COUNT(*)
+          FROM rfid_sync_queue
+          WHERE sync_status='pending' AND tenant_id = $1
+        `, [tenantId]);
 
     const failed =
-      await pool.query(`
-        SELECT COUNT(*)
-        FROM rfid_sync_queue
-        WHERE sync_status='failed' AND tenant_id = $1
-      `, [tenantId]);
+      access.mode === "UNIT"
+        ? { rows: [{ count: 0 }] }
+        : await pool.query(`
+          SELECT COUNT(*)
+          FROM rfid_sync_queue
+          WHERE sync_status='failed' AND tenant_id = $1
+        `, [tenantId]);
 
     const kartuAktif =
       await pool.query(`
         SELECT COUNT(*)
-        FROM santri
-        WHERE uid_rfid IS NOT NULL
-          AND tenant_id = $1
-      `, [tenantId]);
+        FROM wallet_accounts wa
+        JOIN santri s
+          ON s.id = wa.santri_id
+         AND s.tenant_id = wa.tenant_id
+        WHERE s.uid_rfid IS NOT NULL
+          AND wa.tenant_id = $1${access.mode === "UNIT" ? " AND wa.unit_id = $2" : ""}
+      `, unitParams);
 
     res.json({
 
@@ -478,7 +495,12 @@ async (req,res)=>{
         failed.rows[0].count,
 
       kartu_aktif:
-        kartuAktif.rows[0].count
+        kartuAktif.rows[0].count,
+
+      access: {
+        all_units: access.mode === "ALL",
+        unit_id: access.mode === "UNIT" ? access.unitId : null
+      }
 
     });
 
@@ -488,9 +510,7 @@ async (req,res)=>{
 
     console.log(err);
 
-    res.status(500).json({
-      success:false
-    });
+    sendUnitError(res, err, "Dashboard dompet gagal dimuat");
 
   }
 
@@ -501,29 +521,33 @@ async(req,res)=>{
 
   try{
     const tenantId = req.tenantId;
+    const access = await resolveWalletAccess(req);
+    const unitFilter = access.mode === "UNIT" ? " AND wt.unit_id = $2" : "";
+    const unitParams = access.mode === "UNIT" ? [tenantId, access.unitId] : [tenantId];
+    const deviceUnitFilter = access.mode === "UNIT" ? " AND unit_id = $2" : "";
 
     const stats = await pool.query(
       `
         SELECT
           COUNT(*) FILTER (
-            WHERE DATE(tr.created_at) = CURRENT_DATE
+            WHERE DATE(wt.created_at) = CURRENT_DATE
           )::int AS transaksi_hari_ini,
-          COALESCE(SUM(tr.nominal) FILTER (
-            WHERE DATE(tr.created_at) = CURRENT_DATE
-              AND LOWER(TRIM(tr.trx_type)) = 'payment'
+          COALESCE(SUM(wt.amount) FILTER (
+            WHERE DATE(wt.created_at) = CURRENT_DATE
+              AND wt.direction = 'debit'
           ), 0)::bigint AS nominal_hari_ini,
           COUNT(*) FILTER (
-            WHERE DATE(tr.created_at) = CURRENT_DATE
-              AND LOWER(TRIM(tr.trx_type)) = 'topup'
+            WHERE DATE(wt.created_at) = CURRENT_DATE
+              AND LOWER(TRIM(wt.type)) = 'topup'
           )::int AS topup_hari_ini,
           COUNT(*) FILTER (
-            WHERE DATE(tr.created_at) = CURRENT_DATE
-              AND LOWER(TRIM(tr.trx_type)) = 'refund'
+            WHERE DATE(wt.created_at) = CURRENT_DATE
+              AND LOWER(TRIM(wt.type)) = 'refund'
           )::int AS refund_hari_ini
-        FROM transaksi_rfid tr
-        WHERE tr.tenant_id = $1
+        FROM wallet_transactions wt
+        WHERE wt.tenant_id = $1${unitFilter}
       `,
-      [tenantId],
+      unitParams,
     );
 
     const devices = await pool.query(
@@ -532,62 +556,61 @@ async(req,res)=>{
           COUNT(*) FILTER (WHERE status = 'online')::int AS device_online,
           COUNT(*) FILTER (WHERE status != 'online')::int AS device_offline
         FROM devices
-        WHERE tenant_id = $1
+        WHERE tenant_id = $1${deviceUnitFilter}
       `,
-      [tenantId],
+      unitParams,
     );
 
-    const pending = await pool.query(
-      `
+    const pending = access.mode === "UNIT"
+      ? { rows: [{ pending_sync: 0 }] }
+      : await pool.query(`
         SELECT COUNT(*)::int AS pending_sync
         FROM rfid_sync_queue
         WHERE sync_status = 'pending'
           AND tenant_id = $1
-      `,
-      [tenantId],
-    );
+      `, [tenantId]);
 
     const topMerchant = await pool.query(
       `
         SELECT
           COALESCE(m.nama_merchant, 'Merchant') AS name,
           COUNT(*)::int AS count
-        FROM transaksi_rfid tr
+        FROM wallet_transactions wt
         LEFT JOIN merchant_rfid m
-          ON m.id = tr.merchant_id
-         AND m.tenant_id = tr.tenant_id
-        WHERE tr.tenant_id = $1
-          AND LOWER(TRIM(tr.trx_type)) = 'payment'
-          AND tr.created_at >= (CURRENT_DATE - INTERVAL '30 days')
+          ON m.id = wt.merchant_id
+         AND m.tenant_id = wt.tenant_id
+        WHERE wt.tenant_id = $1
+          AND wt.direction = 'debit'
+          AND wt.created_at >= (CURRENT_DATE - INTERVAL '30 days')${unitFilter}
         GROUP BY COALESCE(m.nama_merchant, 'Merchant')
         ORDER BY count DESC
         LIMIT 1
       `,
-      [tenantId],
+      unitParams,
     );
 
     const recent = await pool.query(
       `
         SELECT
-          tr.id,
-          tr.created_at,
-          tr.nominal,
-          tr.trx_type,
+          wt.id,
+          wt.created_at,
+          wt.amount AS nominal,
+          wt.type AS trx_type,
           s.nama AS nama_santri,
           s.kamar,
           m.nama_merchant
-        FROM transaksi_rfid tr
+        FROM wallet_transactions wt
         LEFT JOIN santri s
-          ON s.id = tr.santri_id
-         AND s.tenant_id = tr.tenant_id
+          ON s.id = wt.santri_id
+         AND s.tenant_id = wt.tenant_id
         LEFT JOIN merchant_rfid m
-          ON m.id = tr.merchant_id
-         AND m.tenant_id = tr.tenant_id
-        WHERE tr.tenant_id = $1
-        ORDER BY tr.created_at DESC
+          ON m.id = wt.merchant_id
+         AND m.tenant_id = wt.tenant_id
+        WHERE wt.tenant_id = $1${unitFilter}
+        ORDER BY wt.created_at DESC
         LIMIT 5
       `,
-      [tenantId],
+      unitParams,
     );
 
     const row = stats.rows[0] || {};
@@ -606,6 +629,10 @@ async(req,res)=>{
         pending_sync: pendingRow.pending_sync || 0,
         top_merchant: topMerchant.rows[0] || null,
         recent_activity: recent.rows,
+        access: {
+          all_units: access.mode === "ALL",
+          unit_id: access.mode === "UNIT" ? access.unitId : null,
+        },
       },
     });
 
@@ -615,10 +642,7 @@ async(req,res)=>{
 
     console.log(err);
 
-    res.status(500).json({
-      success:false,
-      error: err.message,
-    });
+    sendUnitError(res, err, "Dashboard dompet gagal dimuat");
 
   }
 
@@ -628,56 +652,56 @@ async(req,res)=>{
 // RFID TRANSACTIONS
 // ==========================
 
-function buildTransactionFilters(tenantId, query, { applyDefaultDateRange = false } = {}) {
-  const conditions = ["tr.tenant_id = $1"];
+function buildTransactionFilters(tenantId, query, access, { applyDefaultDateRange = false } = {}) {
+  const conditions = ["wt.tenant_id = $1"];
   const params = [tenantId];
   let index = 2;
+
+  if (access?.mode === "UNIT") {
+    conditions.push(`wt.unit_id = $${index}`);
+    params.push(access.unitId);
+    index += 1;
+  }
 
   const hasDateFilter = query.start_date || query.end_date;
 
   if (query.start_date) {
-    conditions.push(`tr.created_at >= $${index}::date`);
+    conditions.push(`wt.created_at >= $${index}::date`);
     params.push(String(query.start_date));
     index += 1;
   } else if (applyDefaultDateRange && !hasDateFilter) {
-    conditions.push(`tr.created_at >= (CURRENT_DATE - INTERVAL '6 days')`);
+    conditions.push(`wt.created_at >= (CURRENT_DATE - INTERVAL '6 days')`);
   }
 
   if (query.end_date) {
-    conditions.push(`tr.created_at < ($${index}::date + INTERVAL '1 day')`);
+    conditions.push(`wt.created_at < ($${index}::date + INTERVAL '1 day')`);
     params.push(String(query.end_date));
     index += 1;
   } else if (applyDefaultDateRange && !hasDateFilter) {
-    conditions.push(`tr.created_at < (CURRENT_DATE + INTERVAL '1 day')`);
+    conditions.push(`wt.created_at < (CURRENT_DATE + INTERVAL '1 day')`);
   }
 
   if (query.santri_id) {
-    conditions.push(`tr.santri_id = $${index}`);
+    conditions.push(`wt.santri_id = $${index}`);
     params.push(Number(query.santri_id));
     index += 1;
   }
 
   if (query.merchant_id) {
-    conditions.push(`tr.merchant_id = $${index}`);
+    conditions.push(`wt.merchant_id = $${index}`);
     params.push(Number(query.merchant_id));
     index += 1;
   }
 
   if (query.device_id) {
-    conditions.push(`tr.device_id = $${index}`);
+    conditions.push(`wt.device_id = $${index}`);
     params.push(Number(query.device_id));
     index += 1;
   }
 
   if (query.type) {
-    conditions.push(`LOWER(TRIM(tr.trx_type)) = LOWER(TRIM($${index}))`);
+    conditions.push(`LOWER(TRIM(wt.type)) = LOWER(TRIM($${index}))`);
     params.push(String(query.type));
-    index += 1;
-  }
-
-  if (query.status) {
-    conditions.push(`LOWER(TRIM(tr.sync_status)) = LOWER(TRIM($${index}))`);
-    params.push(String(query.status));
     index += 1;
   }
 
@@ -693,17 +717,21 @@ function buildTransactionFilters(tenantId, query, { applyDefaultDateRange = fals
     params,
     nextIndex: index,
     joinSql: `
-      FROM transaksi_rfid tr
+      FROM wallet_transactions wt
+      JOIN wallet_accounts wa
+        ON wa.id = wt.wallet_account_id
+       AND wa.tenant_id = wt.tenant_id
+       AND wa.unit_id = wt.unit_id
       LEFT JOIN santri s
-        ON s.id = tr.santri_id AND s.tenant_id = tr.tenant_id
+        ON s.id = wt.santri_id AND s.tenant_id = wt.tenant_id
       LEFT JOIN merchant_rfid m
-        ON m.id = tr.merchant_id AND m.tenant_id = tr.tenant_id
+        ON m.id = wt.merchant_id AND m.tenant_id = wt.tenant_id
       LEFT JOIN devices d
-        ON d.id = tr.device_id AND d.tenant_id = tr.tenant_id
+        ON d.id = wt.device_id AND d.tenant_id = wt.tenant_id
       LEFT JOIN transaksi tx
-        ON tx.trx_id = tr.trx_id AND tx.tenant_id = tr.tenant_id
+        ON tx.trx_id = wt.reference_id AND tx.tenant_id = wt.tenant_id
       LEFT JOIN users u
-        ON u.id = tx.created_by AND u.tenant_id = tr.tenant_id
+        ON u.id = tx.created_by AND u.tenant_id = wt.tenant_id
     `,
   };
 }
@@ -713,10 +741,12 @@ async(req,res)=>{
 
   try{
     const tenantId = req.tenantId;
+    const access = await resolveWalletAccess(req);
     const paging = parsePagination(req.query, { defaultLimit: 20, maxLimit: 200 });
     const { whereSql, params, nextIndex, joinSql } = buildTransactionFilters(
       tenantId,
       req.query,
+      access,
       { applyDefaultDateRange: paging.hasPagingParams },
     );
 
@@ -729,7 +759,25 @@ async(req,res)=>{
 
     let listSql = `
       SELECT
-        tr.*,
+        wt.id,
+        wt.created_at,
+        wt.wallet_account_id,
+        wt.tenant_id,
+        wt.unit_id,
+        wt.santri_id,
+        wt.type,
+        wt.type AS trx_type,
+        wt.direction,
+        wt.amount,
+        wt.amount AS nominal,
+        NULL::bigint AS saldo_awal,
+        wt.balance_after,
+        wt.balance_after AS saldo_akhir,
+        wt.reference_id AS trx_id,
+        wt.source,
+        wt.merchant_id,
+        wt.device_id,
+        'synced'::text AS sync_status,
         s.nama AS nama_santri,
         s.kamar,
         s.nis,
@@ -738,7 +786,7 @@ async(req,res)=>{
         u.nama AS nama_petugas
       ${joinSql}
       WHERE ${whereSql}
-      ORDER BY tr.created_at DESC
+      ORDER BY wt.created_at DESC
     `;
 
     const listParams = [...params];
@@ -753,6 +801,10 @@ async(req,res)=>{
     res.json({
       success:true,
       data: result.rows,
+      access: {
+        all_units: access.mode === "ALL",
+        unit_id: access.mode === "UNIT" ? access.unitId : null,
+      },
       pagination: buildPaginationResponse({
         hasPagingParams: paging.hasPagingParams,
         limit: paging.limit,
@@ -768,10 +820,7 @@ async(req,res)=>{
 
     console.log(err);
 
-    res.status(500).json({
-      success:false,
-      error: err.message,
-    });
+    sendUnitError(res, err, "Transaksi dompet gagal dimuat");
 
   }
 
@@ -782,6 +831,7 @@ async(req,res)=>{
 
   try{
     const tenantId = req.tenantId;
+    const access = await resolveWalletAccess(req, pool, { requireSpecific: true });
     const search = String(req.query.search || "").trim();
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
 
@@ -798,24 +848,30 @@ async(req,res)=>{
           s.nis,
           s.nama,
           s.uid_rfid,
-          s.saldo,
+          wa.current_balance AS saldo,
           s.status,
           s.kelas_id,
-          k.nama_kelas
-        FROM santri s
+          k.nama_kelas,
+          wa.unit_id,
+          wa.id AS wallet_account_id
+        FROM wallet_accounts wa
+        JOIN santri s
+          ON s.id = wa.santri_id
+         AND s.tenant_id = wa.tenant_id
         LEFT JOIN kelas k
           ON k.id = s.kelas_id
          AND k.tenant_id = s.tenant_id
-        WHERE s.tenant_id = $1
+        WHERE wa.tenant_id = $1
+          AND wa.unit_id = $2
           AND (
-            s.nama ILIKE $2
-            OR s.nis ILIKE $2
-            OR s.uid_rfid ILIKE $2
+            s.nama ILIKE $3
+            OR s.nis ILIKE $3
+            OR s.uid_rfid ILIKE $3
           )
         ORDER BY s.nama ASC
-        LIMIT $3
+        LIMIT $4
       `,
-      [tenantId, pattern, limit],
+      [tenantId, access.unitId, pattern, limit],
     );
 
     res.json({
@@ -829,10 +885,7 @@ async(req,res)=>{
 
     console.log(err);
 
-    res.status(500).json({
-      success: false,
-      error: err.message,
-    });
+    sendUnitError(res, err, "Pencarian santri dompet gagal");
 
   }
 
@@ -857,31 +910,33 @@ async(req,res)=>{
       nominal,
       user_id
     } = req.body;
+    const amount = Number(nominal);
+    if (!Number.isInteger(Number(santri_id)) || Number(santri_id) <= 0) {
+      return res.status(400).json({ success: false, error: "Santri wajib dipilih" });
+    }
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, error: "Nominal topup tidak valid" });
+    }
 
     await client.query(
       "BEGIN"
     );
 
-    const santri =
-      await client.query(
-        `
-        SELECT *
-        FROM santri
-        WHERE id=$1
-          AND tenant_id=$2
-        `,
-        [santri_id, tenantId]
-      );
+    const access = await resolveWalletAccess(req, client, { requireSpecific: true });
+    const walletAccount = await getWalletAccountForSantri(client, {
+      tenantId,
+      unitId: access.unitId,
+      santriId: Number(santri_id),
+      lock: true,
+    });
 
-    if(
-      santri.rows.length===0
-    ){
+    if(!walletAccount){
       throw new Error(
         "Santri tidak ditemukan"
       );
     }
 
-    if (!isSantriAktif(santri.rows[0].status)) {
+    if (!isSantriAktif(walletAccount.santri_status)) {
       await client.query("ROLLBACK");
       return res.status(409).json({
         success: false,
@@ -891,66 +946,52 @@ async(req,res)=>{
 
     const saldoAwal =
       Number(
-        santri.rows[0].saldo
+        walletAccount.current_balance
       );
 
     const saldoAkhir =
       saldoAwal +
-      Number(nominal);
+      amount;
 
         const trxId =
       `TOPUP-${Date.now()}`;
 
     await client.query(
       `
-      UPDATE santri
-      SET saldo=$1
+      UPDATE wallet_accounts
+      SET current_balance=$1,
+          updated_at=NOW()
       WHERE id=$2
         AND tenant_id=$3
+        AND unit_id=$4
       `,
       [
         saldoAkhir,
-        santri_id,
-        tenantId
+        walletAccount.id,
+        tenantId,
+        access.unitId
       ]
     );
 
     await client.query(
-`
-INSERT INTO transaksi_rfid
-(
-  trx_uuid,
-  trx_id,
-  santri_id,
-  nominal,
-  saldo_awal,
-  saldo_akhir,
-  trx_type,
-  sync_status,
-  tenant_id
-)
-VALUES
-(
-  gen_random_uuid(),
-  $1,
-  $2,
-  $3,
-  $4,
-  $5,
-  'topup',
-  'synced',
-  $6
-)
-`,
-[
-  trxId,
-  santri_id,
-  nominal,
-  saldoAwal,
-  saldoAkhir,
-  tenantId
-]
-);
+      `INSERT INTO wallet_transactions (
+         wallet_account_id, tenant_id, unit_id, santri_id, type, direction,
+         amount, balance_after, reference_type, reference_id, source,
+         actor_user_id, location_unit_id, idempotency_key
+       )
+       VALUES ($1, $2, $3, $4, 'topup', 'credit', $5, $6, 'manual_topup', $7, 'admin', $8, $3, $9)`,
+      [
+        walletAccount.id,
+        tenantId,
+        access.unitId,
+        Number(santri_id),
+        amount,
+        saldoAkhir,
+        trxId,
+        req.user?.id || user_id || null,
+        `${tenantId}:${access.unitId}:${trxId}`,
+      ]
+    );
 
      await client.query(
       `
@@ -976,9 +1017,9 @@ VALUES
       )
       `,
       [
-        santri_id,
-        nominal,
-        user_id,
+        Number(santri_id),
+        amount,
+        req.user?.id || user_id || null,
         trxId,
         tenantId
       ]
@@ -1004,7 +1045,7 @@ VALUES
   [
     "BACKEND",
     "RFID_TOPUP",
-    `${santri.rows[0].nama} | Rp ${nominal}`,
+    `${walletAccount.nama} | Rp ${amount}`,
     tenantId,
   ]
 );
@@ -1031,10 +1072,7 @@ VALUES
 
     console.log(err);
 
-    res.status(500).json({
-      success:false,
-      error:err.message
-    });
+    sendUnitError(res, err, err.message || "Topup saldo gagal");
 
   }
 
@@ -1051,28 +1089,30 @@ async(req,res)=>{
 
   try{
     const tenantId = req.tenantId;
+    const access = await resolveWalletAccess(req);
     const { whereSql, params, joinSql } = buildTransactionFilters(
       tenantId,
       req.query,
+      access,
       { applyDefaultDateRange: true },
     );
 
     const result =
       await pool.query(`
         SELECT
-          tr.created_at,
+          wt.created_at,
           s.nama AS nama_santri,
           s.kamar,
-          tr.trx_type,
+          wt.type AS trx_type,
           m.nama_merchant,
           d.device_id,
-          tr.nominal,
-          tr.saldo_awal,
-          tr.saldo_akhir,
-          tr.sync_status
+          wt.amount AS nominal,
+          NULL::bigint AS saldo_awal,
+          wt.balance_after AS saldo_akhir,
+          'synced'::text AS sync_status
         ${joinSql}
         WHERE ${whereSql}
-        ORDER BY tr.created_at DESC
+        ORDER BY wt.created_at DESC
         LIMIT 10000
       `, params);
 
@@ -1117,9 +1157,7 @@ async(req,res)=>{
 
     console.log(err);
 
-    res.status(500).json({
-      success:false
-    });
+    sendUnitError(res, err, "Export transaksi dompet gagal");
 
   }
 
@@ -1130,21 +1168,24 @@ async(req,res)=>{
 
   try{
     const tenantId = req.tenantId;
+    const access = await resolveWalletAccess(req);
+    const unitFilter = access.mode === "UNIT" ? " AND wt.unit_id = $2" : "";
+    const params = access.mode === "UNIT" ? [tenantId, access.unitId] : [tenantId];
 
     const result =
       await pool.query(`
         SELECT
-          t.created_at,
+          wt.created_at,
           s.nama,
-          t.nominal,
-          t.created_by,
-          t.trx_id
-        FROM transaksi t
-        LEFT JOIN santri s ON s.id = t.santri_id AND s.tenant_id = t.tenant_id
-        WHERE t.jenis = 'TOPUP RFID'
-          AND t.tenant_id = $1
-        ORDER BY t.created_at DESC
-      `, [tenantId]);
+          wt.amount AS nominal,
+          wt.actor_user_id AS created_by,
+          wt.reference_id AS trx_id
+        FROM wallet_transactions wt
+        LEFT JOIN santri s ON s.id = wt.santri_id AND s.tenant_id = wt.tenant_id
+        WHERE wt.type = 'topup'
+          AND wt.tenant_id = $1${unitFilter}
+        ORDER BY wt.created_at DESC
+      `, params);
 
     const worksheet =
       XLSX.utils.json_to_sheet(
@@ -1187,9 +1228,7 @@ async(req,res)=>{
 
     console.log(err);
 
-    res.status(500).json({
-      success:false
-    });
+    sendUnitError(res, err, "Export topup dompet gagal");
 
   }
 
@@ -1399,16 +1438,18 @@ async(req,res)=>{
 
   try{
     const tenantId = req.tenantId;
+    const access = await resolveWalletAccess(req, pool, { requireSpecific: true });
 
     const {
       santri_id
     } = req.query;
 
-    const santriCheck = await pool.query(
-      `SELECT id FROM santri WHERE id = $1 AND tenant_id = $2`,
-      [santri_id, tenantId]
-    );
-    if (santriCheck.rows.length === 0) {
+    const account = await getWalletAccountForSantri(pool, {
+      tenantId,
+      unitId: access.unitId,
+      santriId: Number(santri_id),
+    });
+    if (!account) {
       return res.status(404).json({ success: false, error: "Santri tidak ditemukan" });
     }
 
@@ -1416,22 +1457,28 @@ async(req,res)=>{
       await pool.query(
         `
         SELECT
-          tr.created_at,
-          tr.trx_type,
-          tr.nominal,
-          tr.saldo_awal,
-          tr.saldo_akhir,
-          tr.trx_id,
+          wt.created_at,
+          wt.type AS trx_type,
+          wt.amount AS nominal,
+          NULL::bigint AS saldo_awal,
+          wt.balance_after AS saldo_akhir,
+          wt.reference_id AS trx_id,
           s.nama,
           s.uid_rfid,
-          s.saldo
-        FROM transaksi_rfid tr
-        LEFT JOIN santri s ON s.id = tr.santri_id AND s.tenant_id = tr.tenant_id
-        WHERE tr.santri_id = $1
-          AND tr.tenant_id = $2
-        ORDER BY tr.created_at DESC
+          wa.current_balance AS saldo,
+          wt.unit_id
+        FROM wallet_transactions wt
+        JOIN wallet_accounts wa
+          ON wa.id = wt.wallet_account_id
+         AND wa.tenant_id = wt.tenant_id
+         AND wa.unit_id = wt.unit_id
+        LEFT JOIN santri s ON s.id = wt.santri_id AND s.tenant_id = wt.tenant_id
+        WHERE wt.santri_id = $1
+          AND wt.tenant_id = $2
+          AND wt.unit_id = $3
+        ORDER BY wt.created_at DESC
         `,
-        [santri_id, tenantId]
+        [santri_id, tenantId, access.unitId]
       );
 
     res.json({
@@ -1445,10 +1492,7 @@ async(req,res)=>{
 
     console.log(err);
 
-    res.status(500).json({
-      success:false,
-      error:err.message
-    });
+    sendUnitError(res, err, "Mutasi dompet gagal dimuat");
 
   }
 

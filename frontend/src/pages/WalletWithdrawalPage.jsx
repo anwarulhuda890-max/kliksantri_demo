@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import AppShell from "../layouts/AppShell";
 import api from "../services/api";
 import Card from "../components/ui/Card";
@@ -7,8 +7,15 @@ import { FormActionBar, FormField, FormGrid, Input } from "../components/ui/form
 import SantriSearchPicker from "../components/rfid/SantriSearchPicker";
 import { formatCurrency } from "../utils/formatCurrency";
 import { getUser } from "../utils/storage";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 function WalletWithdrawalPage() {
+  const { activeUnitId } = useActiveUnit();
+  const writeScopeParams = useMemo(
+    () => (activeUnitId ? { unit_id: activeUnitId } : null),
+    [activeUnitId],
+  );
   const petugas = getUser()?.nama || getUser()?.username || "Petugas";
   const [santriId, setSantriId] = useState("");
   const [selectedSantri, setSelectedSantri] = useState(null);
@@ -22,6 +29,13 @@ function WalletWithdrawalPage() {
     if (!Number.isSafeInteger(amount) || amount <= 0) return alert("Nominal penarikan tidak valid");
     if (amount > Number(selectedSantri?.saldo || 0)) return alert("Saldo tidak cukup");
     if (!keterangan.trim()) return alert("Keterangan penarikan wajib diisi");
+    let unitPayload;
+    try {
+      unitPayload = requireActiveUnitForWrite({ activeUnitId });
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
     if (!window.confirm(`Tarik ${formatCurrency(amount)} dari dompet ${selectedSantri?.nama}?`)) return;
 
     setLoading(true);
@@ -30,6 +44,7 @@ function WalletWithdrawalPage() {
         santri_id: Number(santriId),
         nominal: amount,
         keterangan: keterangan.trim(),
+        ...unitPayload,
       });
       const data = response.data.data;
       setSelectedSantri((current) => ({ ...current, saldo: data.saldo_akhir }));
@@ -57,6 +72,7 @@ function WalletWithdrawalPage() {
             onChange={setSantriId}
             onSelect={setSelectedSantri}
             selectedSantri={selectedSantri}
+            params={writeScopeParams}
             disabled={loading}
             required
           />

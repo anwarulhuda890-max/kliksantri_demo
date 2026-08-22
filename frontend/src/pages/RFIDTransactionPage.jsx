@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../layouts/AppShell";
 import api, { API_BASE_URL } from "../services/api";
 import Badge from "../components/ui/Badge";
@@ -16,6 +16,8 @@ import {
 import { FilterBar, FormField, Input, Select } from "../components/ui/form";
 import { DEFAULT_PAGE_SIZE } from "../hooks/useClientPagination";
 import { inferTransactionMethod, transactionMethodLabel } from "../constants/wallet";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams } from "../utils/unitScopeParams";
 
 function trxTypeLabel(trxType) {
   if (trxType === "payment") return "PEMBAYARAN";
@@ -47,6 +49,11 @@ function getApiError(err, fallback = "Terjadi kesalahan. Silakan coba lagi.") {
 }
 
 function RFIDTransactionPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const scopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const defaultRange = getDefaultDateRange();
   const [transactions, setTransactions] = useState([]);
   const [pagination, setPagination] = useState({
@@ -77,6 +84,7 @@ function RFIDTransactionPage() {
 
         if (tableSearch.trim()) params.search = tableSearch.trim();
         if (filterType) params.type = filterType;
+        Object.assign(params, scopeParams);
 
         const res = await api.get("/rfid/transactions", { params });
         setTransactions(res.data.data || []);
@@ -95,7 +103,7 @@ function RFIDTransactionPage() {
         setIsLoading(false);
       }
     },
-    [startDate, endDate, tableSearch, filterType],
+    [startDate, endDate, tableSearch, filterType, scopeParams],
   );
 
   useEffect(() => {
@@ -124,6 +132,7 @@ function RFIDTransactionPage() {
 
     if (tableSearch.trim()) params.set("search", tableSearch.trim());
     if (filterType) params.set("type", filterType);
+    Object.entries(scopeParams).forEach(([key, value]) => params.set(key, value));
 
     return `${API_BASE_URL}/rfid/transactions/export?${params.toString()}`;
   };

@@ -27,6 +27,7 @@ function GenerateTagihanForm({
   setForm,
   onSubmit,
   isGenerating = false,
+  unitScopeParams = null,
 }) {
   const [bulanInput, setBulanInput] = useState(form.bulan || "");
 
@@ -93,6 +94,7 @@ function GenerateTagihanForm({
                 onSelectSantri(santri);
               }}
               disabled={isGenerating}
+              params={unitScopeParams}
             />
             {selectedSantriItems.length > 0 ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

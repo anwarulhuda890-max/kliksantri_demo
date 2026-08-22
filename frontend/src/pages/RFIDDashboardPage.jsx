@@ -11,6 +11,8 @@ import {
   DashboardCompactList,
 } from "../components/dashboard/dashboardShared.jsx";
 import { formatCurrency, formatNumber } from "../utils/formatCurrency";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams } from "../utils/unitScopeParams";
 
 function trxTypeLabel(trxType) {
   if (trxType === "payment") return "Pembayaran";
@@ -20,14 +22,19 @@ function trxTypeLabel(trxType) {
 }
 
 function RFIDDashboardPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const scopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
   const [dashboard, setDashboard] = useState({});
   const [summary, setSummary] = useState({});
 
   const loadData = async () => {
     try {
       const [dashRes, summaryRes] = await Promise.all([
-        api.get("/rfid/dashboard"),
-        api.get("/rfid/dashboard-summary"),
+        api.get("/rfid/dashboard", { params: scopeParams }),
+        api.get("/rfid/dashboard-summary", { params: scopeParams }),
       ]);
       setDashboard(dashRes.data || {});
       setSummary(summaryRes.data?.data || {});
@@ -38,7 +45,7 @@ function RFIDDashboardPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [scopeParams]);
 
   const recentActivity = useMemo(
     () => (summary.recent_activity || []).map((item) => ({

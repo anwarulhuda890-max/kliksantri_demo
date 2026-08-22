@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "../layouts/AppShell";
 import api, { API_BASE_URL } from "../services/api";
 import Card from "../components/ui/Card";
@@ -12,6 +12,8 @@ import { FormField, Input, FormGrid, FormActionBar } from "../components/ui/form
 import { getUser } from "../utils/storage";
 import { formatCurrency } from "../utils/formatCurrency";
 import SantriSearchPicker from "../components/rfid/SantriSearchPicker";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 function getApiError(err, fallback = "Terjadi kesalahan. Silakan coba lagi.") {
   return err?.response?.data?.error || fallback;
@@ -23,6 +25,15 @@ function isSantriNonAktif(status) {
 }
 
 function RFIDTopupPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
+  const writeScopeParams = useMemo(
+    () => (activeUnitId ? { unit_id: activeUnitId } : null),
+    [activeUnitId],
+  );
   const [santriId, setSantriId] = useState("");
   const [selectedSantri, setSelectedSantri] = useState(null);
   const [nominal, setNominal] = useState("");
@@ -42,7 +53,7 @@ function RFIDTopupPage() {
       setIsSearchingTable(true);
       try {
         const res = await api.get("/rfid/santri/search", {
-          params: { search: q, limit: 20 },
+          params: { ...readScopeParams, search: q, limit: 20 },
         });
         setTableResults(res.data.data || []);
       } catch (err) {
@@ -54,7 +65,7 @@ function RFIDTopupPage() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [tableSearch]);
+  }, [readScopeParams, tableSearch]);
 
   const submitTopup = async () => {
     const user = getUser() || {};
@@ -79,6 +90,14 @@ function RFIDTopupPage() {
       return;
     }
 
+    let unitPayload;
+    try {
+      unitPayload = requireActiveUnitForWrite({ activeUnitId });
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+
     if (isTopupLoading) return;
 
     setIsTopupLoading(true);
@@ -88,6 +107,7 @@ function RFIDTopupPage() {
         santri_id: Number(santriId),
         nominal: Number(nominal),
         user_id: user.id,
+        ...unitPayload,
       });
 
       const saldoAwal = Number(res.data.saldo_awal || 0);
@@ -126,6 +146,7 @@ function RFIDTopupPage() {
             onChange={setSantriId}
             onSelect={setSelectedSantri}
             selectedSantri={selectedSantri}
+            params={writeScopeParams}
             disabled={isTopupLoading}
             required
           />
@@ -194,7 +215,9 @@ function RFIDTopupPage() {
                 type="button"
                 variant="success"
                 onClick={() => {
-                  window.open(`${API_BASE_URL}/rfid/topup/export`, "_blank");
+                  const params = new URLSearchParams();
+                  Object.entries(readScopeParams).forEach(([key, value]) => params.set(key, value));
+                  window.open(`${API_BASE_URL}/rfid/topup/export?${params.toString()}`, "_blank");
                 }}
               >
                 Export Excel
