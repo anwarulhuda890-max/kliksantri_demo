@@ -17,7 +17,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 
 import { useActiveChild } from '../../context/ActiveChildContext';
-import { isPesantrenUnit } from '../../utils/unitFeatures';
+import { useWaliFeatures } from '../../hooks/useWaliFeatures';
 
 import { useSahriyah } from '../../hooks/useSahriyah';
 
@@ -62,10 +62,11 @@ export function KeuanganScreen() {
   const navigation = useNavigation();
 
   const { activeSantriId, activeChild } = useActiveChild();
+  const { features } = useWaliFeatures(activeChild);
 
   const sahriyah = useSahriyah(activeSantriId);
 
-  const rfid = useRFID(activeSantriId, isPesantrenUnit(activeChild));
+  const rfid = useRFID(activeSantriId, features.rfid);
 
 
 
@@ -297,6 +298,7 @@ export function KeuanganScreen() {
 
 
 
+        {features.rfid ? (
         <View style={styles.section}>
 
           <View style={styles.sectionHead}>
@@ -360,6 +362,7 @@ export function KeuanganScreen() {
           </AppCard>
 
         </View>
+        ) : null}
 
       </ScrollView>
 

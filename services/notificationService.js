@@ -238,6 +238,54 @@ async function sendInAppToAllWaliInTenant({
   }
 }
 
+async function sendInAppToWaliInUnit({
+  tenantId,
+  unitId,
+  title,
+  body,
+  type = "generic",
+  data = {},
+}) {
+  try {
+    const { rows: waliRows } = await pool.query(
+      `SELECT DISTINCT wa.id AS wali_akun_id
+       FROM wali_akun wa
+       JOIN wali_santri ws
+         ON ws.tenant_id = wa.tenant_id AND ws.nomor_hp = wa.nomor_hp
+       JOIN santri_units su
+         ON su.tenant_id = ws.tenant_id AND su.santri_id = ws.santri_id
+        AND su.status = 'active' AND su.left_at IS NULL
+       WHERE wa.tenant_id = $1
+         AND wa.status = 'active'
+         AND su.unit_id = $2
+       ORDER BY wa.id`,
+      [tenantId, unitId],
+    );
+
+    const safeTitle = String(title || "").trim();
+    const safeBody = String(body || "").trim();
+    if (!safeTitle || !safeBody) {
+      return { success: false, skipped: true, reason: "missing_title_or_body" };
+    }
+
+    const rows = [];
+    for (const row of waliRows) {
+      rows.push(await createInAppNotification({
+        tenantId,
+        waliAkunId: row.wali_akun_id,
+        title: safeTitle,
+        body: safeBody,
+        type,
+        data: { ...(data || {}), type, unit_id: Number(unitId) },
+      }));
+    }
+    return { success: rows.length > 0, count: rows.length, rows };
+  } catch (err) {
+    console.log("sendInAppToWaliInUnit ERROR:", err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 async function listInAppNotifications({
   tenantId,
   waliAkunId,
@@ -844,6 +892,7 @@ module.exports = {
   createInAppNotification,
   sendInAppToWaliBySantriId,
   sendInAppToAllWaliInTenant,
+  sendInAppToWaliInUnit,
   listInAppNotifications,
   markInAppNotificationRead,
   markAllInAppNotificationsRead,

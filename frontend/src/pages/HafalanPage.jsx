@@ -9,6 +9,8 @@ import { Table, TableScroll } from "../components/ui/table";
 import { OperationalPageStyles } from "../components/shared/OperationalPageStyles";
 import { exportExcel } from "../utils/exportExcel";
 import { FaFilter } from "react-icons/fa";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 const filterPanelStyle = {
   display: "flex",
@@ -50,6 +52,8 @@ function AkademikResponsiveStyles() {
 }
 
 function HafalanPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const scopeParams = buildUnitScopeParams({ activeUnitId, allUnitsAllowed });
   const [kelas, setKelas] = useState([]);
   const [kelasId, setKelasId] = useState("");
   const [bulan, setBulan] = useState(new Date().getMonth() + 1);
@@ -59,7 +63,7 @@ function HafalanPage() {
 
   const getHafalan = async (b, t) => {
     try {
-      const response = await api.get("/hafalan", { params: { bulan: b, tahun: t } });
+      const response = await api.get("/hafalan", { params: { ...scopeParams, bulan: b, tahun: t } });
       const data = {};
 
       response.data.data.forEach((h) => {
@@ -90,7 +94,7 @@ function HafalanPage() {
 
   const getKelas = async () => {
     try {
-      const response = await api.get("/kelas");
+      const response = await api.get("/kelas", { params: scopeParams });
       setKelas(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -99,7 +103,7 @@ function HafalanPage() {
 
   const getSantri = async (id) => {
     try {
-      const response = await api.get("/santri");
+      const response = await api.get("/santri", { params: scopeParams });
       const filtered = response.data.data.filter(
         (s) => String(s.kelas_id) === String(id)
       );
@@ -110,12 +114,14 @@ function HafalanPage() {
   };
 
   useEffect(() => {
+    setKelasId("");
+    setSantri([]);
     getKelas();
-  }, []);
+  }, [activeUnitId, allUnitsAllowed]);
 
   useEffect(() => {
     getHafalan(bulan, tahun);
-  }, [bulan, tahun]);
+  }, [bulan, tahun, activeUnitId, allUnitsAllowed]);
 
   const handleHafalan = (pekan, santriId, field, value) => {
     const key = `${pekan}-${santriId}-${bulan}-${tahun}`;
@@ -140,6 +146,7 @@ function HafalanPage() {
     }
 
     try {
+      const unitPayload = requireActiveUnitForWrite({ activeUnitId });
       for (const [key, data] of entries) {
         const segments = key.split("-");
         const tahunKey = parseInt(segments[segments.length - 1], 10);
@@ -153,6 +160,7 @@ function HafalanPage() {
         }
 
         await api.post("/hafalan", {
+          ...unitPayload,
           santri_id: santriId,
           tanggal: new Date().toISOString().split("T")[0],
           kitab: data.kitab || "",

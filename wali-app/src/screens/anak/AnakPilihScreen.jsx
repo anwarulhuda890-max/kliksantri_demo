@@ -74,7 +74,7 @@ function AnakCard({ anak, isActive, onPress }) {
 export function AnakPilihScreen() {
   const navigation = useNavigation();
   const { anak } = useAuth();
-  const { activeSantriId, setActiveSantri } = useActiveChild();
+  const { activeSantriId, activeUnitId, setActiveSantri } = useActiveChild();
 
   async function handlePilih(child) {
     await setActiveSantri(child);
@@ -94,11 +94,12 @@ export function AnakPilihScreen() {
 
       <FlatList
         data={anak}
-        keyExtractor={(item) => String(item.santri_id ?? item.id)}
+        keyExtractor={(item) => `${item.santri_id ?? item.id}:${item.unit_id}`}
         renderItem={({ item }) => (
           <AnakCard
             anak={item}
-            isActive={(item.santri_id ?? item.id) === activeSantriId}
+            isActive={Number(item.santri_id ?? item.id) === Number(activeSantriId)
+              && Number(item.unit_id) === Number(activeUnitId)}
             onPress={() => handlePilih(item)}
           />
         )}

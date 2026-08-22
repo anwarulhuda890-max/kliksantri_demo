@@ -8,6 +8,8 @@ import { Table, TableScroll } from "../components/ui/table";
 import { OperationalPageStyles } from "../components/shared/OperationalPageStyles";
 import { exportExcel } from "../utils/exportExcel";
 import { FaFilter } from "react-icons/fa";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 const filterPanelStyle = {
   display: "flex",
@@ -49,6 +51,8 @@ function AkademikResponsiveStyles() {
 }
 
 function NilaiPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const scopeParams = buildUnitScopeParams({ activeUnitId, allUnitsAllowed });
   const [kelas, setKelas] = useState([]);
   const [kelasId, setKelasId] = useState("");
   const [bulan, setBulan] = useState(new Date().getMonth() + 1);
@@ -59,7 +63,7 @@ function NilaiPage() {
 
   const getNilai = async (b, t) => {
     try {
-      const response = await api.get("/nilai", { params: { bulan: b, tahun: t } });
+      const response = await api.get("/nilai", { params: { ...scopeParams, bulan: b, tahun: t } });
       const data = {};
 
       response.data.data.forEach((n) => {
@@ -73,26 +77,24 @@ function NilaiPage() {
     }
   };
 
-  const defaultMapel = ["Nahwu", "Fiqih", "Tajwid", "Akhlak", "Tauhid"];
-
   const getMapel = async (id) => {
     if (!id) {
       setMapelList([]);
       return;
     }
     try {
-      const response = await api.get("/mata-pelajaran", { params: { kelas_id: id } });
+      const response = await api.get("/mata-pelajaran", { params: { ...scopeParams, kelas_id: id } });
       const assigned = (response.data.data || []).filter((item) => item.ditugaskan).map((item) => item.nama);
-      setMapelList(assigned.length ? assigned : defaultMapel);
+      setMapelList(assigned);
     } catch (err) {
       console.error(err);
-      setMapelList(defaultMapel);
+      setMapelList([]);
     }
   };
 
   const getKelas = async () => {
     try {
-      const response = await api.get("/kelas");
+      const response = await api.get("/kelas", { params: scopeParams });
       setKelas(response.data.data || []);
     } catch (err) {
       console.error(err);
@@ -101,7 +103,7 @@ function NilaiPage() {
 
   const getSantri = async (id) => {
     try {
-      const response = await api.get("/santri");
+      const response = await api.get("/santri", { params: scopeParams });
       const filtered = response.data.data.filter(
         (s) => String(s.kelas_id) === String(id)
       );
@@ -112,12 +114,15 @@ function NilaiPage() {
   };
 
   useEffect(() => {
+    setKelasId("");
+    setSantri([]);
+    setMapelList([]);
     getKelas();
-  }, []);
+  }, [activeUnitId, allUnitsAllowed]);
 
   useEffect(() => {
     getNilai(bulan, tahun);
-  }, [bulan, tahun]);
+  }, [bulan, tahun, activeUnitId, allUnitsAllowed]);
 
   const handleNilai = (santriId, mapel, value) => {
     const key = `${santriId}-${mapel}-${bulan}-${tahun}`;
@@ -138,6 +143,7 @@ function NilaiPage() {
     }
 
     try {
+      const unitPayload = requireActiveUnitForWrite({ activeUnitId });
       for (const [key, nilaiVal] of entries) {
         const segments = key.split("-");
         const tahunKey = parseInt(segments[segments.length - 1], 10);
@@ -151,6 +157,7 @@ function NilaiPage() {
         }
 
         await api.post("/nilai", {
+          ...unitPayload,
           santri_id: santriId,
           tanggal: new Date().toISOString().split("T")[0],
           mapel,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FaEye,
   FaEdit,
@@ -28,6 +28,7 @@ import {
   FormActionBar,
 } from "../components/ui/form";
 import { getApiError } from "../components/pembayaran/pembayaranShared";
+import { useActiveUnit } from "../context/ActiveUnitContext";
 
 const COVER_WIDTH = 1200;
 const COVER_HEIGHT = 675;
@@ -623,6 +624,7 @@ function ReadArticleModal({ item, open, onClose }) {
 }
 
 function PengumumanPage() {
+  const { activeUnitId, activeUnit, allUnitsAllowed } = useActiveUnit();
   const [list, setList] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editId, setEditId] = useState(null);
@@ -632,39 +634,51 @@ function PengumumanPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
   const [coverUploading, setCoverUploading] = useState(false);
-  const [units, setUnits] = useState([]);
   const fileInputRef = useRef(null);
 
-  const getList = async () => {
+  const getList = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get("/pengumuman");
+      const params = activeUnitId ? { unit_id: activeUnitId } : (allUnitsAllowed ? { scope: "all" } : {});
+      const res = await api.get("/pengumuman", { params });
       setList(res.data.data || []);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeUnitId, allUnitsAllowed]);
 
   useEffect(() => {
     getList();
-    api.get("/users/meta/units").then((res) => {
-      const nextUnits = res.data.data || [];
-      setUnits(nextUnits);
-      const pesantren = nextUnits.find((unit) => String(unit.kode).toUpperCase() === "PESANTREN");
-      setForm((prev) => ({ ...prev, unit_id: prev.unit_id || String(pesantren?.id || nextUnits[0]?.id || "") }));
-    }).catch(() => {});
-  }, []);
+    setForm((prev) => ({ ...prev, unit_id: activeUnitId ? String(activeUnitId) : "" }));
+    setEditId(null);
+    setFormOpen(false);
+  }, [activeUnitId, getList]);
+
+  const openCreate = () => {
+    if (!activeUnitId) {
+      alert("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.");
+      return;
+    }
+    setForm({ ...EMPTY_FORM, unit_id: String(activeUnitId) });
+    setEditId(null);
+    setFormOpen(true);
+  };
 
   const save = async () => {
     if (!form.judul.trim() || !form.isi.trim()) {
       alert("Judul dan isi wajib diisi.");
       return;
     }
+    if (!activeUnitId) {
+      alert("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.");
+      return;
+    }
     try {
       const payload = {
         ...form,
+        unit_id: activeUnitId,
         expires_at: form.expires_at || null,
         cover_url: form.cover_url || null,
       };
@@ -684,6 +698,10 @@ function PengumumanPage() {
   };
 
   const startEdit = (item) => {
+    if (!activeUnitId || Number(item.unit_id) !== Number(activeUnitId)) {
+      alert("Pilih unit pengumuman terlebih dahulu untuk melakukan perubahan data.");
+      return;
+    }
     setForm({
       judul: item.judul,
       isi: item.isi,
@@ -699,9 +717,14 @@ function PengumumanPage() {
   };
 
   const toggleActive = async (item) => {
+    if (!activeUnitId) {
+      alert("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.");
+      return;
+    }
     try {
       await api.put(`/pengumuman/${item.id}`, {
         is_active: !item.is_active,
+        unit_id: activeUnitId,
       });
       getList();
     } catch (err) {
@@ -711,9 +734,13 @@ function PengumumanPage() {
   };
 
   const remove = async (id) => {
+    if (!activeUnitId) {
+      alert("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.");
+      return;
+    }
     if (!window.confirm("Hapus pengumuman ini?")) return;
     try {
-      await api.delete(`/pengumuman/${id}`);
+      await api.delete(`/pengumuman/${id}`, { params: { unit_id: activeUnitId } });
       getList();
     } catch (err) {
       console.error(err);
@@ -841,7 +868,7 @@ function PengumumanPage() {
               ))}
             </div>
             <div className="ops-page__filter-actions">
-              <Button type="button" variant="primary" onClick={() => setFormOpen(true)}>
+              <Button type="button" variant="primary" onClick={openCreate}>
                 + Buat Pengumuman
               </Button>
             </div>
@@ -896,17 +923,8 @@ function PengumumanPage() {
                 maxLength={200}
               />
             </FormField>
-            <FormField label="Unit Pendidikan" htmlFor="pengumuman-unit" required>
-              <Select
-                id="pengumuman-unit"
-                value={form.unit_id}
-                onChange={(e) => setForm((prev) => ({ ...prev, unit_id: e.target.value }))}
-              >
-                <option value="">Pilih Unit</option>
-                {units.map((unit) => (
-                  <option key={unit.id} value={unit.id}>{unit.nama}</option>
-                ))}
-              </Select>
+            <FormField label="Unit Pendidikan">
+              <Input value={activeUnit?.nama || "Pilih unit pada ruang kerja global"} disabled />
             </FormField>
 
             <FormField label="Isi Pengumuman" htmlFor="pengumuman-isi" required>
@@ -993,7 +1011,7 @@ function PengumumanPage() {
                 }
                 action={
                   list.length === 0 && !formOpen ? (
-                    <Button type="button" variant="primary" onClick={() => setFormOpen(true)}>
+                    <Button type="button" variant="primary" onClick={openCreate}>
                       + Buat Pengumuman Pertama
                     </Button>
                   ) : null

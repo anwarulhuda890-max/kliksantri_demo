@@ -1,9 +1,16 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const { assertRecordInTenant } = require("../services/tenantScope");
 const notificationService = require("../services/notificationService");
-const { getScopedUnitIds } = require("../middleware/dataUnitScope");
+const { accessError, resolveActiveUnit } = require("../services/unitAccessService");
+
+function sendError(res, error) {
+  return res.status(error.status || 500).json({
+    success: false,
+    error: error.status ? error.message : "Gagal memproses pengumuman",
+    code: error.code,
+  });
+}
 
 function buildPengumumanNotificationTitle(prioritas) {
   const key = String(prioritas || "normal").trim().toLowerCase();
@@ -16,8 +23,9 @@ async function sendPengumumanNotification({ tenantId, pengumuman }) {
   if (!pengumuman?.is_active) return;
 
   try {
-    const notifResult = await notificationService.sendInAppToAllWaliInTenant({
+    const notifResult = await notificationService.sendInAppToWaliInUnit({
       tenantId,
+      unitId: pengumuman.unit_id,
       title: buildPengumumanNotificationTitle(pengumuman.prioritas),
       body: pengumuman.judul,
       type: "pengumuman",
@@ -36,7 +44,7 @@ async function sendPengumumanNotification({ tenantId, pengumuman }) {
 
 router.get("/", async (req, res) => {
   try {
-    const scopedUnitIds = await getScopedUnitIds(req);
+    const access = await resolveActiveUnit(req);
     const result = await pool.query(
       `
       SELECT
@@ -44,31 +52,27 @@ router.get("/", async (req, res) => {
         published_at, expires_at, is_active, created_by, created_at, tenant_id
       FROM pengumuman
       WHERE tenant_id = $1
-        AND ($2::int[] IS NULL OR unit_id = ANY($2::int[]))
+        AND ($2::integer IS NULL OR unit_id = $2)
       ORDER BY created_at DESC
       `,
-      [req.tenantId, scopedUnitIds]
+      [req.tenantId, access.mode === "UNIT" ? access.unitId : null]
     );
 
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendError(res, err);
   }
 });
 
 router.post("/", async (req, res) => {
   try {
-    const { judul, isi, cover_url, prioritas, expires_at, is_active, unit_id } = req.body;
-    const unitValue = unit_id || (await pool.query(
-      `SELECT id FROM unit_pendidikan WHERE tenant_id = $1 AND UPPER(kode) = 'PESANTREN' AND is_active = true`,
-      [req.tenantId],
-    )).rows[0]?.id;
-    const unitCheck = await pool.query(
-      `SELECT id FROM unit_pendidikan WHERE id = $1 AND tenant_id = $2 AND is_active = true`,
-      [unitValue, req.tenantId],
-    );
-    if (unitCheck.rows.length === 0) return res.status(400).json({ success: false, error: "Unit pendidikan tidak valid" });
+    const { judul, isi, cover_url, prioritas, expires_at, is_active } = req.body;
+    const access = await resolveActiveUnit(req);
+    if (access.mode !== "UNIT") {
+      throw accessError("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.", 400, "UNIT_REQUIRED");
+    }
+    const unitValue = access.unitId;
 
     if (!judul || !isi) {
       return res.status(400).json({
@@ -110,39 +114,26 @@ router.post("/", async (req, res) => {
     });
   } catch (err) {
     console.error("PENGUMUMAN INSERT ERROR", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message,
-      detail: err.detail,
-      code: err.code,
-    });
+    return sendError(res, err);
   }
 });
 
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const owned = await assertRecordInTenant("pengumuman", req.tenantId, id);
-    if (!owned.ok) {
-      return res.status(404).json({ success: false, error: owned.error });
+    const access = await resolveActiveUnit(req);
+    if (access.mode !== "UNIT") {
+      throw accessError("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.", 400, "UNIT_REQUIRED");
     }
 
     const existing = await pool.query(
-      "SELECT * FROM pengumuman WHERE id = $1 AND tenant_id = $2",
-      [id, req.tenantId]
+      "SELECT * FROM pengumuman WHERE id = $1 AND tenant_id = $2 AND unit_id = $3",
+      [id, req.tenantId, access.unitId]
     );
     const current = existing.rows[0];
-    const { judul, isi, cover_url, prioritas, expires_at, is_active, unit_id } = req.body;
-    const scopedUnitIds = await getScopedUnitIds(req);
-    if (scopedUnitIds && !scopedUnitIds.includes(Number(current?.unit_id))) {
-      return res.status(403).json({ success: false, error: "Pengumuman berada di luar unit operator" });
-    }
-    const nextUnitId = unit_id ?? current?.unit_id;
-    const unitCheck = await pool.query(
-      `SELECT id FROM unit_pendidikan WHERE id = $1 AND tenant_id = $2 AND is_active = true`,
-      [nextUnitId, req.tenantId],
-    );
-    if (unitCheck.rows.length === 0) return res.status(400).json({ success: false, error: "Unit pendidikan tidak valid" });
+    if (!current) return res.status(404).json({ success: false, error: "Pengumuman tidak ditemukan" });
+    const { judul, isi, cover_url, prioritas, expires_at, is_active } = req.body;
+    const nextUnitId = access.unitId;
     const nextCoverUrl = Object.prototype.hasOwnProperty.call(req.body, "cover_url")
       ? (cover_url ?? null)
       : current.cover_url;
@@ -177,16 +168,20 @@ router.put("/:id", async (req, res) => {
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendError(res, err);
   }
 });
 
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    const access = await resolveActiveUnit(req);
+    if (access.mode !== "UNIT") {
+      throw accessError("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.", 400, "UNIT_REQUIRED");
+    }
     const result = await pool.query(
-      "DELETE FROM pengumuman WHERE id = $1 AND tenant_id = $2 RETURNING id",
-      [id, req.tenantId]
+      "DELETE FROM pengumuman WHERE id = $1 AND tenant_id = $2 AND unit_id = $3 RETURNING id",
+      [id, req.tenantId, access.unitId]
     );
 
     if (result.rows.length === 0) {
@@ -199,7 +194,7 @@ router.delete("/:id", async (req, res) => {
     res.json({ success: true, deleted_id: Number(id) });
   } catch (err) {
     console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendError(res, err);
   }
 });
 

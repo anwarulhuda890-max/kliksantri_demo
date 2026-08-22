@@ -34,6 +34,10 @@ api.interceptors.request.use(
     if (santriId) {
       config.headers['X-Santri-Id'] = String(santriId);
     }
+    const unitId = await storage.getActiveUnitId();
+    if (unitId) {
+      config.headers['X-Unit-Id'] = String(unitId);
+    }
 
     return config;
   },

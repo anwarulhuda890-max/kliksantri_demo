@@ -7,6 +7,7 @@ const KEYS = {
   ANAK: 'wali_anak',
   SANTRI_IDS: 'wali_santri_ids',
   ACTIVE_SANTRI: 'active_santri_id',
+  ACTIVE_UNIT: 'active_unit_id',
   TENANT_SLUG: 'wali_tenant_slug',
   PESANTREN_BRANDING: 'pesantren_branding',
   PUSH_STATUS: 'wali_push_registration_status',
@@ -73,6 +74,16 @@ export const storage = {
     await AsyncStorage.setItem(KEYS.ACTIVE_SANTRI, String(id));
   },
 
+  async getActiveUnitId() {
+    const raw = await AsyncStorage.getItem(KEYS.ACTIVE_UNIT);
+    const parsed = raw ? Number(raw) : null;
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  },
+
+  async setActiveUnitId(id) {
+    await AsyncStorage.setItem(KEYS.ACTIVE_UNIT, String(id));
+  },
+
   async getTenantSlug() {
     const slug = await AsyncStorage.getItem(KEYS.TENANT_SLUG);
     return slug || 'default';
@@ -93,6 +104,7 @@ export const storage = {
       KEYS.ANAK,
       KEYS.SANTRI_IDS,
       KEYS.ACTIVE_SANTRI,
+      KEYS.ACTIVE_UNIT,
       KEYS.TENANT_SLUG,
       KEYS.PESANTREN_BRANDING,
       KEYS.PUSH_STATUS,

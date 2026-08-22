@@ -19,7 +19,7 @@ const waliAppAuthMiddleware =
 
 const waliSantriGuard =
   require("../middleware/waliSantriGuard");
-const { requirePesantrenUnit } = require("../middleware/waliUnitFeatureGuard");
+const { requireWaliUnit, requireWaliUnitFeature } = require("../middleware/waliUnitFeatureGuard");
 
 const notificationService =
   require("../services/notificationService");
@@ -32,47 +32,33 @@ const {
 } = require("../services/tenantService");
 
 const requireTenantFeature = require("../middleware/requireTenantFeature");
-const {
-  getTenantFeaturesForPlatform,
-  isFeatureEnabled,
-} = require("../services/tenantFeatureService");
+const { isFeatureEnabled } = require("../services/tenantFeatureService");
+const { getEffectiveUnitFeatures } = require("../services/unitFeatureService");
 
 const withWaliAuth = [waliAppAuthMiddleware, requireTenantFeature("wali_app")];
 
-function isPesantrenUnit(unit = null) {
-  // Legacy santri yang belum memiliki unit tetap diperlakukan sebagai pesantren.
-  if (!unit || !unit.unit_id) return true;
-  const code = String(unit.unit_kode || '').trim().toUpperCase();
-  const name = String(unit.unit_nama || '').trim().toLowerCase();
-  return code === 'PESANTREN' || code === 'MADINAH' || code === 'MADIN' || name.includes('pesantren');
-}
-
 function buildWaliFeatureConfig(features = [], unit = null) {
   const featureMap = new Map(
-    features.map((feature) => [feature.key, feature.enabled === true])
+    features.map((feature) => [
+      feature.key,
+      feature.effective_enabled === true || feature.enabled === true,
+    ])
   );
-  const enabled = (key, fallback = false) =>
-    featureMap.has(key) ? featureMap.get(key) : fallback;
-
-  const pendidikan = enabled("pendidikan", true);
-  const keamanan = enabled("keamanan", true);
-  const pembayaran = enabled("pembayaran", true);
-
-  const pesantren = isPesantrenUnit(unit);
+  const enabled = (key) => featureMap.get(key) === true;
   return {
-    absensi: pendidikan,
-    nilai: pendidikan,
-    hafalan: pesantren && pendidikan,
-    perizinan: pesantren && enabled("perizinan", true),
-    pelanggaran: pesantren && enabled("pelanggaran", true),
-    kesehatan: pesantren && keamanan,
-    sahriyah: enabled("sahriyah", pembayaran),
-    rfid: pesantren && enabled("rfid", false),
-    pengumuman: enabled("pengumuman", true),
+    absensi: enabled("absensi"),
+    nilai: enabled("nilai"),
+    hafalan: enabled("hafalan"),
+    perizinan: enabled("perizinan"),
+    pelanggaran: enabled("pelanggaran"),
+    kesehatan: enabled("kesehatan"),
+    sahriyah: enabled("sahriyah"),
+    rfid: enabled("rfid"),
+    pengumuman: enabled("pengumuman"),
     unit_id: unit?.unit_id || null,
     unit_kode: unit?.unit_kode || null,
     unit_nama: unit?.unit_nama || null,
-    unit_kategori: pesantren ? 'pesantren' : 'pendidikan',
+    unit_type: unit?.unit_type || null,
   };
 }
 
@@ -333,17 +319,24 @@ router.post(
 
 router.get("/features", ...withWaliAuth, async (req, res) => {
   try {
-    const features = await getTenantFeaturesForPlatform(req.wali.tenant_id);
     const rawSantriId = Number(req.headers["x-santri-id"]);
     const ownsChild = Number.isInteger(rawSantriId) && rawSantriId > 0
       ? await waliAppService.ownsSantri(req.wali.nomor_hp, rawSantriId, req.wali.tenant_id)
       : false;
+    const requestedUnitId = Number(req.headers["x-unit-id"]);
     const unit = ownsChild
-      ? await waliAppService.getSantriUnit(rawSantriId, req.wali.tenant_id)
+      ? await waliAppService.getSantriUnit(
+          rawSantriId,
+          req.wali.tenant_id,
+          Number.isInteger(requestedUnitId) && requestedUnitId > 0 ? requestedUnitId : null,
+        )
       : null;
+    const unitFeatures = unit
+      ? await getEffectiveUnitFeatures(req.wali.tenant_id, unit.unit_id)
+      : [];
     res.json({
       success: true,
-      data: buildWaliFeatureConfig(features, unit),
+      data: buildWaliFeatureConfig(unitFeatures, unit),
     });
   } catch (err) {
     console.error("[wali-app features]", err);
@@ -507,6 +500,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
+  requireWaliUnit,
 
   async (req, res) => {
 
@@ -525,24 +519,32 @@ router.get(
             s.nama,
             s.kamar,
             s.foto,
-            s.saldo,
+            COALESCE(wa.current_balance, 0) AS saldo,
             k.nama_kelas,
-            k.unit_id,
+            su.unit_id,
             u.kode AS unit_kode,
             u.nama AS unit_nama
           FROM santri s
+          JOIN santri_units su
+            ON su.santri_id = s.id AND su.tenant_id = s.tenant_id
+           AND su.status = 'active' AND su.left_at IS NULL
+          JOIN unit_pendidikan u
+            ON u.id = su.unit_id AND u.tenant_id = su.tenant_id
+          LEFT JOIN santri_kelas_enrollments e
+            ON e.santri_unit_id = su.id AND e.tenant_id = su.tenant_id
+           AND e.status = 'active'
           LEFT JOIN kelas k
-            ON k.id = s.kelas_id
-           AND k.tenant_id = s.tenant_id
-          LEFT JOIN unit_pendidikan u
-            ON u.id = k.unit_id
-           AND u.tenant_id = s.tenant_id
+            ON k.id = e.kelas_id AND k.tenant_id = e.tenant_id
+          LEFT JOIN wallet_accounts wa
+            ON wa.tenant_id = su.tenant_id AND wa.unit_id = su.unit_id
+           AND wa.santri_id = su.santri_id AND wa.status = 'active'
           WHERE s.id = $1
             AND s.tenant_id = $2
+            AND su.unit_id = $3
           LIMIT 1
           `,
 
-          [santriId, tenantId]
+          [santriId, tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -654,12 +656,12 @@ router.get(
             created_at,
             updated_at
           FROM kesehatan_santri
-          WHERE santri_id = $1
+          WHERE santri_id = $1 AND tenant_id = $2 AND unit_id = $3
           ORDER BY created_at DESC
           LIMIT 1
           `,
 
-          [santriId]
+          [santriId, req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -811,6 +813,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
+  requireWaliUnit,
 
   async (req, res) => {
 
@@ -832,32 +835,40 @@ router.get(
             s.orang_tua,
             s.nomor_hp_ortu,
             s.foto,
-            s.saldo,
+            COALESCE(wa.current_balance, 0) AS saldo,
             s.limit_harian,
             k.nama_kelas,
-            k.unit_id,
+            su.unit_id,
             u.kode AS unit_kode,
             u.nama AS unit_nama,
             ws.nama AS nama_wali,
             ws.nomor_hp AS nomor_hp_wali,
             ws.alamat AS alamat_wali
           FROM santri s
+          JOIN santri_units su
+            ON su.santri_id = s.id AND su.tenant_id = s.tenant_id
+           AND su.status = 'active' AND su.left_at IS NULL
+          JOIN unit_pendidikan u
+            ON u.id = su.unit_id AND u.tenant_id = su.tenant_id
+          LEFT JOIN santri_kelas_enrollments e
+            ON e.santri_unit_id = su.id AND e.tenant_id = su.tenant_id
+           AND e.status = 'active'
           LEFT JOIN kelas k
-            ON k.id = s.kelas_id
-           AND k.tenant_id = s.tenant_id
-          LEFT JOIN unit_pendidikan u
-            ON u.id = k.unit_id
-           AND u.tenant_id = s.tenant_id
+            ON k.id = e.kelas_id AND k.tenant_id = e.tenant_id
+          LEFT JOIN wallet_accounts wa
+            ON wa.tenant_id = su.tenant_id AND wa.unit_id = su.unit_id
+           AND wa.santri_id = su.santri_id AND wa.status = 'active'
           LEFT JOIN wali_santri ws
             ON ws.santri_id = s.id
            AND ws.tenant_id = s.tenant_id
            AND ws.nomor_hp = $2
           WHERE s.id = $1
             AND s.tenant_id = $3
+            AND su.unit_id = $4
           LIMIT 1
           `,
 
-          [santriId, req.wali.nomor_hp, tenantId]
+          [santriId, req.wali.nomor_hp, tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -914,6 +925,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
+  requireWaliUnitFeature("sahriyah"),
 
   async (req, res) => {
 
@@ -950,9 +962,10 @@ router.get(
         FROM tagihan_sahriyah t
         WHERE t.santri_id = $1
           AND t.tenant_id = $2
+          AND t.unit_id = $3
       `;
 
-      const params = [santriId, tenantId];
+      const params = [santriId, tenantId, req.waliUnit.unit_id];
 
       if (
         bulan &&
@@ -1028,6 +1041,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
+  requireWaliUnitFeature("sahriyah"),
 
   async (req, res) => {
 
@@ -1063,10 +1077,11 @@ router.get(
           WHERE id = $1
             AND santri_id = $2
             AND tenant_id = $3
+            AND unit_id = $4
           LIMIT 1
           `,
 
-          [tagihanId, santriId, tenantId]
+          [tagihanId, santriId, tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -1095,10 +1110,11 @@ router.get(
           FROM pembayaran_sahriyah
           WHERE tagihan_id = $1
             AND tenant_id = $2
+            AND unit_id = $3
           ORDER BY tanggal DESC
           `,
 
-          [tagihanId, tenantId]
+          [tagihanId, tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -1145,7 +1161,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requirePesantrenUnit,
+  requireWaliUnitFeature("rfid"),
 
   async (req, res) => {
 
@@ -1157,19 +1173,23 @@ router.get(
         await pool.query(
 
           `
-          SELECT
-            s.id AS santri_id,
-            s.nama,
-            s.kamar,
-            s.uid_rfid,
-            s.saldo,
-            s.limit_harian
-          FROM santri s
-          WHERE s.id = $1
+          SELECT s.id AS santri_id, s.nama, s.kamar, s.uid_rfid,
+                 COALESCE(wa.current_balance, 0) AS saldo,
+                 COALESCE(s.limit_harian, 0) AS limit_harian
+          FROM santri_units su
+          JOIN santri s ON s.id = su.santri_id AND s.tenant_id = su.tenant_id
+          LEFT JOIN wallet_accounts wa
+            ON wa.tenant_id = su.tenant_id AND wa.unit_id = su.unit_id
+           AND wa.santri_id = su.santri_id AND wa.status = 'active'
+          WHERE su.santri_id = $1
+            AND su.tenant_id = $2
+            AND su.unit_id = $3
+            AND su.status = 'active'
+            AND su.left_at IS NULL
           LIMIT 1
           `,
 
-          [santriId]
+          [santriId, req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -1247,7 +1267,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requirePesantrenUnit,
+  requireWaliUnitFeature("rfid"),
 
   async (req, res) => {
 
@@ -1271,25 +1291,23 @@ router.get(
         await pool.query(
 
           `
-          SELECT
-            tr.id,
-            tr.created_at,
-            tr.trx_type,
-            tr.nominal,
-            tr.saldo_awal,
-            tr.saldo_akhir,
-            tr.trx_id,
-            m.nama_merchant
-          FROM transaksi_rfid tr
-          LEFT JOIN merchant_rfid m
-            ON m.id = tr.merchant_id
-          WHERE tr.santri_id = $1
-          ORDER BY tr.created_at DESC
-          LIMIT $2
-          OFFSET $3
+          SELECT wt.id, wt.created_at, wt.type AS trx_type,
+            wt.amount AS nominal, wt.balance_before AS saldo_awal,
+            wt.balance_after AS saldo_akhir, wt.reference_id AS trx_id,
+            wt.description AS nama_merchant
+          FROM wallet_transactions wt
+          JOIN wallet_accounts wa
+            ON wa.id = wt.wallet_account_id AND wa.tenant_id = wt.tenant_id
+           AND wa.unit_id = wt.unit_id
+          WHERE wa.santri_id = $1
+            AND wt.tenant_id = $2
+            AND wt.unit_id = $3
+          ORDER BY wt.created_at DESC
+          LIMIT $4
+          OFFSET $5
           `,
 
-          [santriId, limit, offset]
+          [santriId, req.tenantId, req.waliUnit.unit_id, limit, offset]
 
         );
 
@@ -1298,11 +1316,16 @@ router.get(
 
           `
           SELECT COUNT(*) AS total
-          FROM transaksi_rfid
-          WHERE santri_id = $1
+          FROM wallet_transactions wt
+          JOIN wallet_accounts wa
+            ON wa.id = wt.wallet_account_id AND wa.tenant_id = wt.tenant_id
+           AND wa.unit_id = wt.unit_id
+          WHERE wa.santri_id = $1
+            AND wt.tenant_id = $2
+            AND wt.unit_id = $3
           `,
 
-          [santriId]
+          [santriId, req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -1359,7 +1382,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requirePesantrenUnit,
+  requireWaliUnitFeature("hafalan"),
 
   async (req, res) => {
 
@@ -1509,6 +1532,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
+  requireWaliUnitFeature("nilai"),
 
   async (req, res) => {
 
@@ -1661,7 +1685,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requirePesantrenUnit,
+  requireWaliUnitFeature("kesehatan"),
 
   async (req, res) => {
 
@@ -1769,7 +1793,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requirePesantrenUnit,
+  requireWaliUnitFeature("pelanggaran"),
 
   async (req, res) => {
 
@@ -1805,13 +1829,13 @@ router.get(
             tindakan,
             petugas
           FROM pelanggaran
-          WHERE santri_id = $1
+          WHERE santri_id = $1 AND tenant_id = $2 AND unit_id = $3
           ORDER BY tanggal DESC, id DESC
-          LIMIT $2
-          OFFSET $3
+          LIMIT $4
+          OFFSET $5
           `,
 
-          [santriId, limit, offset]
+          [santriId, req.tenantId, req.waliUnit.unit_id, limit, offset]
 
         );
 
@@ -1823,10 +1847,10 @@ router.get(
             COUNT(*)      AS total,
             COALESCE(SUM(poin), 0) AS total_poin
           FROM pelanggaran
-          WHERE santri_id = $1
+          WHERE santri_id = $1 AND tenant_id = $2 AND unit_id = $3
           `,
 
-          [santriId]
+          [santriId, req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -1836,10 +1860,10 @@ router.get(
           `
           SELECT COUNT(*) AS total
           FROM pelanggaran
-          WHERE santri_id = $1
+          WHERE santri_id = $1 AND tenant_id = $2 AND unit_id = $3
           `,
 
-          [santriId]
+          [santriId, req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -1906,7 +1930,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requirePesantrenUnit,
+  requireWaliUnitFeature("perizinan"),
 
   async (req, res) => {
 
@@ -1942,13 +1966,13 @@ router.get(
             status,
             catatan
           FROM perizinan
-          WHERE santri_id = $1
+          WHERE santri_id = $1 AND tenant_id = $2 AND unit_id = $3
           ORDER BY tanggal DESC, id DESC
-          LIMIT $2
-          OFFSET $3
+          LIMIT $4
+          OFFSET $5
           `,
 
-          [santriId, limit, offset]
+          [santriId, req.tenantId, req.waliUnit.unit_id, limit, offset]
 
         );
 
@@ -1958,10 +1982,10 @@ router.get(
           `
           SELECT COUNT(*) AS total
           FROM perizinan
-          WHERE santri_id = $1
+          WHERE santri_id = $1 AND tenant_id = $2 AND unit_id = $3
           `,
 
-          [santriId]
+          [santriId, req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -2018,6 +2042,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
+  requireWaliUnitFeature("absensi"),
 
   async (req, res) => {
 
@@ -2524,6 +2549,8 @@ router.get(
   "/pengumuman",
 
   ...withWaliAuth,
+  waliSantriGuard,
+  requireWaliUnitFeature("pengumuman"),
 
   async (req, res) => {
 
@@ -2546,13 +2573,14 @@ router.get(
           FROM pengumuman
           WHERE is_active = true
             AND tenant_id = $1
+            AND unit_id = $2
             AND (
               expires_at IS NULL
               OR expires_at > NOW()
             )
           `,
 
-          [req.tenantId]
+          [req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -2572,6 +2600,7 @@ router.get(
           FROM pengumuman
           WHERE is_active = true
             AND tenant_id = $1
+            AND unit_id = $2
             AND (
               expires_at IS NULL
               OR expires_at > NOW()
@@ -2583,10 +2612,10 @@ router.get(
               ELSE 3
             END,
             published_at DESC
-          LIMIT $2 OFFSET $3
+          LIMIT $3 OFFSET $4
           `,
 
-          [req.tenantId, limit, offset]
+          [req.tenantId, req.waliUnit.unit_id, limit, offset]
 
         );
 

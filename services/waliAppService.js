@@ -167,54 +167,71 @@ const getSantriIdsForPhone = async (nomorHp, tenantId) => {
 const getAnakList = async (nomorHp, tenantId) => {
   const result = await pool.query(
     `
-    SELECT DISTINCT ON (s.id)
+    SELECT DISTINCT ON (s.id, su.unit_id)
       s.id AS santri_id,
       s.nis,
       s.nama,
       s.foto,
       k.nama_kelas,
-      k.unit_id,
+      su.id AS santri_unit_id,
+      su.unit_id,
       u.kode AS unit_kode,
-      u.nama AS unit_nama
+      u.nama AS unit_nama,
+      u.unit_type
     FROM wali_santri ws
     INNER JOIN santri s
       ON s.id = ws.santri_id
      AND s.tenant_id = $2
+    INNER JOIN santri_units su
+      ON su.santri_id = s.id
+     AND su.tenant_id = s.tenant_id
+     AND su.status = 'active'
+     AND su.left_at IS NULL
+    INNER JOIN unit_pendidikan u
+      ON u.id = su.unit_id
+     AND u.tenant_id = su.tenant_id
+     AND u.is_active = true
+    LEFT JOIN santri_kelas_enrollments e
+      ON e.santri_unit_id = su.id
+     AND e.tenant_id = su.tenant_id
+     AND e.status = 'active'
     LEFT JOIN kelas k
-      ON k.id = s.kelas_id
-     AND k.tenant_id = s.tenant_id
-    LEFT JOIN unit_pendidikan u
-      ON u.id = k.unit_id
-     AND u.tenant_id = s.tenant_id
+      ON k.id = e.kelas_id
+     AND k.tenant_id = e.tenant_id
     WHERE ws.nomor_hp = $1
       AND ws.tenant_id = $2
-    ORDER BY s.id ASC, ws.id DESC
+    ORDER BY s.id ASC, su.unit_id ASC, e.id DESC NULLS LAST, ws.id DESC
     `,
     [nomorHp, tenantId]
   );
   return result.rows;
 };
 
-const getSantriUnit = async (santriId, tenantId) => {
+const getSantriUnit = async (santriId, tenantId, unitId = null) => {
   const result = await pool.query(
     `
     SELECT
-      s.id AS santri_id,
-      k.unit_id,
+      su.id AS santri_unit_id,
+      su.santri_id,
+      su.unit_id,
       u.kode AS unit_kode,
-      u.nama AS unit_nama
-    FROM santri s
-    LEFT JOIN kelas k
-      ON k.id = s.kelas_id
-     AND k.tenant_id = s.tenant_id
-    LEFT JOIN unit_pendidikan u
-      ON u.id = k.unit_id
-     AND u.tenant_id = s.tenant_id
-    WHERE s.id = $1
-      AND s.tenant_id = $2
+      u.nama AS unit_nama,
+      u.unit_type,
+      u.preset_key
+    FROM santri_units su
+    JOIN unit_pendidikan u
+      ON u.id = su.unit_id
+     AND u.tenant_id = su.tenant_id
+     AND u.is_active = true
+    WHERE su.santri_id = $1
+      AND su.tenant_id = $2
+      AND su.status = 'active'
+      AND su.left_at IS NULL
+      AND ($3::integer IS NULL OR su.unit_id = $3)
+    ORDER BY su.is_primary DESC, su.id ASC
     LIMIT 1
     `,
-    [santriId, tenantId]
+    [santriId, tenantId, unitId]
   );
   return result.rows[0] || null;
 };

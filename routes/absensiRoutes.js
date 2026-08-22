@@ -6,6 +6,7 @@ const {
   isKelasAllowed,
   kelasScopeSql,
 } = require("../middleware/kelasScope");
+const { getActiveStudentContext } = require("../services/academicUnitService");
 
 async function loadAccess(req, res) {
   const access = await resolveKelasScopeAccess(req);
@@ -20,23 +21,18 @@ async function loadAccess(req, res) {
 }
 
 async function assertSantriAllowed(access, santriId) {
-  const { rows } = await pool.query(
-    `SELECT id, kelas_id
-     FROM santri
-     WHERE id = $1
-       AND tenant_id = $2`,
-    [santriId, access.tenantId]
-  );
-
-  if (rows.length === 0) {
-    return { ok: false, status: 400, error: "Santri tidak ditemukan di tenant ini" };
+  if (access.mode === "ALL") {
+    return { ok: false, status: 400, error: "Pilih unit terlebih dahulu", code: "UNIT_REQUIRED" };
   }
-
-  if (!isKelasAllowed(access, rows[0].kelas_id)) {
-    return { ok: false, status: 403, error: "Akses kelas ditolak" };
+  try {
+    const context = await getActiveStudentContext(access.tenantId, santriId, access.unitId);
+    if (!context.kelas_id || !isKelasAllowed(access, context.kelas_id)) {
+      return { ok: false, status: 403, error: "Akses kelas ditolak" };
+    }
+    return { ok: true, context };
+  } catch (error) {
+    return { ok: false, status: error.status || 403, error: error.message, code: error.code };
   }
-
-  return { ok: true, santri: rows[0] };
 }
 
 router.get("/kelas", async (req, res) => {
@@ -74,13 +70,29 @@ router.get("/santri", async (req, res) => {
     if (!access) return;
 
     const kelasId = req.query.kelas_id ? Number(req.query.kelas_id) : null;
-    const params = [access.tenantId];
-    let query = `SELECT id, nis, nama, kelas_id, kamar
-                 FROM santri
-                 WHERE tenant_id = $1`;
+    if (access.mode === "ALL") {
+      return res.status(400).json({ success: false, error: "Pilih unit terlebih dahulu", code: "UNIT_REQUIRED" });
+    }
+    const params = [access.tenantId, access.unitId];
+    let query = `SELECT s.id, s.nis, s.nama, e.kelas_id, s.kamar,
+                        su.id AS santri_unit_id, e.id AS enrollment_id
+                 FROM santri s
+                 JOIN santri_units su
+                   ON su.tenant_id = s.tenant_id AND su.santri_id = s.id
+                  AND su.unit_id = $2 AND su.status = 'active' AND su.left_at IS NULL
+                 JOIN LATERAL (
+                   SELECT ske.id, ske.kelas_id
+                   FROM santri_kelas_enrollments ske
+                   WHERE ske.tenant_id = su.tenant_id
+                     AND ske.santri_unit_id = su.id
+                     AND ske.status = 'active' AND ske.end_date IS NULL
+                   ORDER BY ske.id DESC LIMIT 1
+                 ) e ON TRUE
+                 WHERE s.tenant_id = $1`;
     let idx = 2;
 
-    const scope = kelasScopeSql(access, "kelas_id", idx);
+    idx = 3;
+    const scope = kelasScopeSql(access, "e.kelas_id", idx);
     query += scope.clause;
     params.push(...scope.params);
     idx = scope.nextIndex;
@@ -89,7 +101,7 @@ router.get("/santri", async (req, res) => {
       if (!isKelasAllowed(access, kelasId)) {
         return res.status(403).json({ success: false, error: "Akses kelas ditolak" });
       }
-      query += ` AND kelas_id = $${idx}`;
+      query += ` AND e.kelas_id = $${idx}`;
       params.push(kelasId);
     }
 
@@ -115,21 +127,15 @@ router.get("/", async (req, res) => {
                      (SELECT kamar FROM santri WHERE id = a.santri_id AND tenant_id = a.tenant_id) AS kamar,
                   TO_CHAR(tanggal::date, 'YYYY-MM-DD') AS tanggal
                  FROM absensi a
-                 WHERE a.tenant_id = $1
-                   AND EXISTS (
-                     SELECT 1
-                     FROM santri s
-                     WHERE s.id = a.santri_id
-                       AND s.tenant_id = a.tenant_id`;
+                 WHERE a.tenant_id = $1`;
     const params = [req.tenantId];
     let paramIdx = 2;
 
-    const scope = kelasScopeSql(access, "s.kelas_id", paramIdx);
-    query += scope.clause;
-    params.push(...scope.params);
-    paramIdx = scope.nextIndex;
-
-    query += `)`;
+    if (access.mode !== "ALL") {
+      query += ` AND a.unit_id = $${paramIdx}`;
+      params.push(access.unitId);
+      paramIdx += 1;
+    }
 
     if (bulan && tahun) {
       query += ` AND EXTRACT(MONTH FROM a.tanggal::date) = $${paramIdx}`
@@ -185,12 +191,26 @@ router.post("/", async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO absensi (santri_id, tanggal, sesi, status, tenant_id)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (santri_id, tanggal, sesi)
-       DO UPDATE SET status = EXCLUDED.status, tenant_id = EXCLUDED.tenant_id
+      `INSERT INTO absensi (
+         santri_id, tanggal, sesi, status, tenant_id, unit_id,
+         santri_unit_id, enrollment_id, kelas_id, actor_user_id, source
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'admin')
+       ON CONFLICT (tenant_id, unit_id, santri_id, tanggal, sesi)
+       WHERE unit_id IS NOT NULL
+       DO UPDATE SET status = EXCLUDED.status,
+                     santri_unit_id = EXCLUDED.santri_unit_id,
+                     enrollment_id = EXCLUDED.enrollment_id,
+                     kelas_id = EXCLUDED.kelas_id,
+                     actor_user_id = EXCLUDED.actor_user_id
        RETURNING *`,
-      [santri_id, tanggal, sesi, status, req.tenantId]
+      [
+        santri_id, tanggal, sesi, status, req.tenantId, access.unitId,
+        santriCheck.context.santri_unit_id,
+        santriCheck.context.enrollment_id,
+        santriCheck.context.kelas_id,
+        req.user.id,
+      ]
     );
 
     res.json({ success: true, data: result.rows[0] });

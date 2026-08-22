@@ -9,7 +9,7 @@ const {
   seedTenantFeaturesAllEnabled,
   seedTenantFeaturesFromPackage,
 } = require("./tenantFeatureService");
-const { presetKeyForUnitType } = require("../config/unitFeaturePresets");
+const { normalizeUnitType, presetKeyForUnitType } = require("../config/unitFeaturePresets");
 const { applyPresetToUnit } = require("./unitFeatureService");
 
 const RESERVED_SLUGS = new Set([
@@ -27,27 +27,21 @@ const RESERVED_SLUGS = new Set([
 
 const SLUG_PATTERN = /^[a-z0-9-]+$/;
 
-const DEFAULT_UNITS = [
-  { kode: "PESANTREN", nama: "Pondok Pesantren", sort_order: 1 },
-  { kode: "MADIN", nama: "Madrasah Diniyah", sort_order: 2 },
-  { kode: "PAUD", nama: "PAUD", sort_order: 3 },
-  { kode: "TK", nama: "TK", sort_order: 4 },
-  { kode: "SD", nama: "SD", sort_order: 5 },
-  { kode: "MI", nama: "MI", sort_order: 6 },
-  { kode: "SMP", nama: "SMP", sort_order: 7 },
-  { kode: "SMA", nama: "SMA", sort_order: 8 },
-];
-
-const DEFAULT_UNIT_USERS = [
-  { username: "pimpinan", role: "pimpinan_yayasan", unitKode: null },
-  { username: "paud", role: "bendahara_unit", unitKode: "PAUD" },
-  { username: "tk", role: "bendahara_unit", unitKode: "TK" },
-  { username: "sd", role: "bendahara_unit", unitKode: "SD" },
-  { username: "mi", role: "bendahara_unit", unitKode: "MI" },
-  { username: "smp", role: "bendahara_unit", unitKode: "SMP" },
-  { username: "sma", role: "bendahara_unit", unitKode: "SMA" },
-  { username: "madin", role: "bendahara_unit", unitKode: "MADIN" },
-];
+function normalizeInitialUnits(rawUnits, tenantName) {
+  const supplied = Array.isArray(rawUnits) ? rawUnits : [];
+  const source = supplied.length
+    ? supplied
+    : [{ kode: "UTAMA", nama: tenantName, unit_type: "CUSTOM", sort_order: 1 }];
+  return source.map((unit, index) => {
+    const unitType = normalizeUnitType(unit.unit_type || unit.jenis || "CUSTOM");
+    const kode = String(unit.kode || `UNIT-${index + 1}`).trim().toUpperCase();
+    const nama = String(unit.nama || kode).trim();
+    if (!unitType || !kode || !nama) {
+      throw Object.assign(new Error("Konfigurasi unit awal tidak valid"), { status: 400 });
+    }
+    return { kode, nama, unit_type: unitType, sort_order: Number(unit.sort_order) || index + 1 };
+  });
+}
 
 function generateSecurePassword() {
   return crypto.randomBytes(16).toString("base64url");
@@ -118,6 +112,7 @@ function normalizeCreatePayload(body = {}) {
     package: pkg,
     custom_features: body.custom_features || body.features || [],
     create_default_unit_users: body.create_default_unit_users === true,
+    initial_units: normalizeInitialUnits(body.units, nama),
     admin_role: body.admin_role,
   };
 }
@@ -178,6 +173,7 @@ async function createTenantWithDefaults(rawPayload, platformUser) {
     package: packageName,
     custom_features,
     create_default_unit_users,
+    initial_units,
     admin_role,
   } = payload;
 
@@ -286,23 +282,20 @@ async function createTenantWithDefaults(rawPayload, platformUser) {
     );
 
     const units = [];
-    const unitByKode = {};
-
-    for (const unit of DEFAULT_UNITS) {
-      const presetKey = presetKeyForUnitType(unit.kode);
+    for (const unit of initial_units) {
+      const presetKey = presetKeyForUnitType(unit.unit_type);
       const ins = await client.query(
         `INSERT INTO unit_pendidikan
          (kode, nama, unit_type, preset_key, sort_order, is_active, tenant_id, updated_at)
          VALUES ($1, $2, $3, $4, $5, true, $6, NOW())
          RETURNING id, kode, nama, sort_order, tenant_id`,
-        [unit.kode, unit.nama, unit.kode, presetKey, unit.sort_order, tenant.id]
+        [unit.kode, unit.nama, unit.unit_type, presetKey, unit.sort_order, tenant.id]
       );
       units.push(ins.rows[0]);
-      unitByKode[unit.kode] = ins.rows[0].id;
       await applyPresetToUnit(client, {
         tenantId: tenant.id,
         unitId: ins.rows[0].id,
-        unitType: unit.kode,
+        unitType: unit.unit_type,
       });
     }
 
@@ -323,19 +316,20 @@ async function createTenantWithDefaults(rawPayload, platformUser) {
     const default_users_created = [];
 
     if (create_default_unit_users) {
-      for (const spec of DEFAULT_UNIT_USERS) {
+      for (const unit of units) {
         const initialPassword = generateUnitUserPassword();
         const unitPasswordHash = await bcrypt.hash(initialPassword, 10);
+        const username = `${slugCheck.slug}-unit-${unit.id}`;
 
         const userResult = await client.query(
           `INSERT INTO users (nama, username, password, role, status, tenant_id)
            VALUES ($1, $2, $3, $4, 'Aktif', $5)
            RETURNING id, nama, username, role, status, tenant_id, created_at`,
           [
-            spec.username.charAt(0).toUpperCase() + spec.username.slice(1),
-            spec.username,
+            `Operator ${unit.nama}`,
+            username,
             unitPasswordHash,
-            spec.role,
+            "bendahara_unit",
             tenant.id,
           ]
         );
@@ -345,15 +339,13 @@ async function createTenantWithDefaults(rawPayload, platformUser) {
           initial_password: initialPassword,
         };
 
-        if (spec.unitKode && unitByKode[spec.unitKode]) {
-          await client.query(
-            `INSERT INTO user_unit_scope (tenant_id, user_id, unit_id, status, updated_at)
-             VALUES ($1, $2, $3, 'active', NOW())
-             ON CONFLICT DO NOTHING`,
-            [tenant.id, created.id, unitByKode[spec.unitKode]]
-          );
-          created.unit_kode = spec.unitKode;
-        }
+        await client.query(
+          `INSERT INTO user_unit_scope (tenant_id, user_id, unit_id, status, updated_at)
+           VALUES ($1, $2, $3, 'active', NOW())
+           ON CONFLICT DO NOTHING`,
+          [tenant.id, created.id, unit.id]
+        );
+        created.unit_id = unit.id;
 
         default_users_created.push(created);
       }
@@ -388,8 +380,7 @@ async function createTenantWithDefaults(rawPayload, platformUser) {
 
 module.exports = {
   RESERVED_SLUGS,
-  DEFAULT_UNITS,
-  DEFAULT_UNIT_USERS,
+  normalizeInitialUnits,
   validateSlug,
   normalizeCreatePayload,
   createTenantWithDefaults,

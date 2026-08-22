@@ -1,23 +1,24 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const { assertSantriInTenant } = require("../services/tenantScope");
-const { getScopedKelasIds, assertSantriInScopedUnit } = require("../middleware/dataUnitScope");
+const {
+  getActiveStudentContext,
+  resolveAcademicUnit,
+  sendAcademicError,
+} = require("../services/academicUnitService");
 
 router.get("/", async (req, res) => {
   try {
     const bulan = req.query.bulan ? Number(req.query.bulan) : null;
     const tahun = req.query.tahun ? Number(req.query.tahun) : null;
 
-    let query = `SELECT h.* FROM hafalan h
-                 INNER JOIN santri s ON s.id = h.santri_id AND s.tenant_id = h.tenant_id
-                 WHERE h.tenant_id = $1`;
+    const access = await resolveAcademicUnit(req);
+    let query = `SELECT h.* FROM hafalan h WHERE h.tenant_id = $1`;
     const params = [req.tenantId];
     let paramIdx = 2;
-    const scopedKelasIds = await getScopedKelasIds(req);
-    if (scopedKelasIds) {
-      query += ` AND s.kelas_id = ANY($${paramIdx}::int[])`;
-      params.push(scopedKelasIds);
+    if (access.mode !== "ALL") {
+      query += ` AND h.unit_id = $${paramIdx}`;
+      params.push(access.unitId);
       paramIdx += 1;
     }
 
@@ -37,8 +38,7 @@ router.get("/", async (req, res) => {
     const result = await pool.query(query, params);
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendAcademicError(res, err);
   }
 });
 
@@ -56,31 +56,37 @@ router.post("/", async (req, res) => {
       pekan,
     } = req.body;
 
-    const santriCheck = await assertSantriInTenant(req.tenantId, santri_id);
-    if (!santriCheck.ok) {
-      return res.status(400).json({ success: false, error: santriCheck.error });
+    const access = await resolveAcademicUnit(req);
+    if (access.mode === "ALL") {
+      return res.status(400).json({ success: false, error: "Pilih unit terlebih dahulu", code: "UNIT_REQUIRED" });
     }
-    const scopeCheck = await assertSantriInScopedUnit(req, santri_id);
-    if (!scopeCheck.ok) return res.status(403).json({ success: false, error: scopeCheck.error });
+    const context = await getActiveStudentContext(req.tenantId, santri_id, access.unitId);
 
     const cek = await pool.query(
       `SELECT id
        FROM hafalan
        WHERE tenant_id = $1
-         AND santri_id = $2
-         AND bulan = $3
-         AND tahun = $4
-         AND pekan = $5`,
-      [req.tenantId, santri_id, bulan, tahun, pekan]
+         AND unit_id = $2
+         AND santri_id = $3
+         AND bulan = $4
+         AND tahun = $5
+         AND pekan = $6`,
+      [req.tenantId, access.unitId, santri_id, bulan, tahun, pekan]
     );
 
     if (cek.rows.length > 0) {
       const result = await pool.query(
         `UPDATE hafalan
-         SET tanggal = $1, kitab = $2, awal = $3, akhir = $4, catatan = $5
-         WHERE id = $6 AND tenant_id = $7
+         SET tanggal = $1, kitab = $2, awal = $3, akhir = $4, catatan = $5,
+             santri_unit_id = $6, enrollment_id = $7, kelas_id = $8,
+             actor_user_id = $9
+         WHERE id = $10 AND tenant_id = $11 AND unit_id = $12
          RETURNING *`,
-        [tanggal, kitab, awal, akhir, catatan, cek.rows[0].id, req.tenantId]
+        [
+          tanggal, kitab, awal, akhir, catatan,
+          context.santri_unit_id, context.enrollment_id, context.kelas_id,
+          req.user.id, cek.rows[0].id, req.tenantId, access.unitId,
+        ]
       );
 
       return res.json({
@@ -91,11 +97,12 @@ router.post("/", async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO hafalan (
+       `INSERT INTO hafalan (
          santri_id, tanggal, kitab, awal, akhir, catatan,
-         bulan, tahun, pekan, tenant_id
+         bulan, tahun, pekan, tenant_id, unit_id, santri_unit_id,
+         enrollment_id, kelas_id, actor_user_id, source
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'admin')
        RETURNING *`,
       [
         santri_id,
@@ -108,13 +115,17 @@ router.post("/", async (req, res) => {
         tahun,
         pekan,
         req.tenantId,
+        access.unitId,
+        context.santri_unit_id,
+        context.enrollment_id,
+        context.kelas_id,
+        req.user.id,
       ]
     );
 
     res.json({ success: true, mode: "insert", data: result.rows[0] });
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ success: false, error: err.message });
+    sendAcademicError(res, err);
   }
 });
 

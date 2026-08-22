@@ -1,6 +1,6 @@
 const pool = require("../db");
 const requirePermission = require("./requirePermission");
-const { getAllowedUnitIds } = require("../services/unitAccessService");
+const { resolveActiveUnit } = require("../services/unitAccessService");
 
 async function resolveKelasScopeAccess(req) {
   const role = req.user?.role;
@@ -28,8 +28,8 @@ async function resolveKelasScopeAccess(req) {
     return { denied: true, status: 403, error: "Akses ditolak" };
   }
 
-  const unitIds = await getAllowedUnitIds(req.user, tenantId);
-  if (unitIds === null) {
+  const unitAccess = await resolveActiveUnit(req);
+  if (unitAccess.mode === "ALL") {
     return {
       mode: "ALL",
       kelasIds: null,
@@ -45,8 +45,8 @@ async function resolveKelasScopeAccess(req) {
      INNER JOIN kelas k ON k.id = s.kelas_id AND k.tenant_id = $2
      WHERE s.user_id = $1
        AND s.tenant_id = $2
-       AND k.unit_id = ANY($3::int[])`,
-    [userId, tenantId, unitIds]
+       AND k.unit_id = $3`,
+    [userId, tenantId, unitAccess.unitId]
   );
 
   if (rows.length > 0) {
@@ -55,25 +55,21 @@ async function resolveKelasScopeAccess(req) {
       kelasIds: rows.map((r) => r.kelas_id),
       canManage,
       tenantId,
+      unitId: unitAccess.unitId,
     };
   }
 
-  const unitRows = unitIds.length
-    ? await pool.query(
+  const unitRows = await pool.query(
       `SELECT DISTINCT id AS kelas_id FROM kelas
-       WHERE tenant_id = $1 AND unit_id = ANY($2::int[])`,
-      [tenantId, unitIds],
-    )
-    : { rows: [] };
-  if (unitRows.rows.length === 0) {
-    return { denied: true, status: 403, error: "Unit atau kelas scope belum diassign" };
-  }
-
+       WHERE tenant_id = $1 AND unit_id = $2`,
+      [tenantId, unitAccess.unitId],
+    );
   return {
     mode: "SCOPED",
     kelasIds: unitRows.rows.map((r) => r.kelas_id),
     canManage,
     tenantId,
+    unitId: unitAccess.unitId,
   };
 }
 

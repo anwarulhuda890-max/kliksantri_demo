@@ -5,8 +5,12 @@ import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import EmptyState from "../components/ui/EmptyState";
 import { FormField, Input } from "../components/ui/form";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 function MataPelajaranPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const scopeParams = buildUnitScopeParams({ activeUnitId, allUnitsAllowed });
   const [kelas, setKelas] = useState([]);
   const [kelasId, setKelasId] = useState("");
   const [mapel, setMapel] = useState([]);
@@ -15,25 +19,29 @@ function MataPelajaranPage() {
 
   const load = async (selectedKelas = kelasId) => {
     const response = await api.get("/mata-pelajaran", {
-      params: selectedKelas ? { kelas_id: selectedKelas } : {},
+      params: selectedKelas ? { ...scopeParams, kelas_id: selectedKelas } : scopeParams,
     });
     setMapel(response.data.data || []);
   };
 
   useEffect(() => {
-    Promise.all([api.get("/kelas"), api.get("/mata-pelajaran")])
+    setKelasId("");
+    Promise.all([
+      api.get("/kelas", { params: scopeParams }),
+      api.get("/mata-pelajaran", { params: scopeParams }),
+    ])
       .then(([kelasResponse, mapelResponse]) => {
         setKelas(kelasResponse.data.data || []);
         setMapel(mapelResponse.data.data || []);
       })
       .catch((err) => alert(err?.response?.data?.error || "Gagal memuat mata pelajaran"));
-  }, []);
+  }, [activeUnitId, allUnitsAllowed]);
 
   const create = async () => {
     if (!nama.trim()) return alert("Nama mata pelajaran wajib diisi");
     setLoading(true);
     try {
-      await api.post("/mata-pelajaran", { nama: nama.trim() });
+      await api.post("/mata-pelajaran", { ...requireActiveUnitForWrite({ activeUnitId }), nama: nama.trim() });
       setNama("");
       await load();
     } catch (err) {
@@ -48,9 +56,10 @@ function MataPelajaranPage() {
     setLoading(true);
     try {
       if (item.ditugaskan) {
-        await api.delete(`/mata-pelajaran/assign/${kelasId}/${item.id}`);
+        await api.delete(`/mata-pelajaran/assign/${kelasId}/${item.id}`, { params: requireActiveUnitForWrite({ activeUnitId }) });
       } else {
         await api.post("/mata-pelajaran/assign", {
+          ...requireActiveUnitForWrite({ activeUnitId }),
           kelas_id: Number(kelasId),
           mata_pelajaran_id: item.id,
         });
@@ -69,7 +78,7 @@ function MataPelajaranPage() {
         <FormField label="Tambah Mata Pelajaran" htmlFor="nama-mapel">
           <div style={{ display: "flex", gap: "var(--space-3)", alignItems: "end" }}>
             <Input id="nama-mapel" value={nama} onChange={(e) => setNama(e.target.value)} placeholder="Contoh: Bahasa Arab" disabled={loading} />
-            <Button type="button" variant="primary" onClick={create} disabled={loading}>Tambah</Button>
+            <Button type="button" variant="primary" onClick={create} disabled={loading || !activeUnitId}>Tambah</Button>
           </div>
         </FormField>
       </Card>

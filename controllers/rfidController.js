@@ -851,7 +851,7 @@ async(req,res)=>{
           s.uid_rfid,
           COALESCE(wa.current_balance, 0) AS saldo,
           s.status,
-          s.kelas_id,
+          enrollment.kelas_id,
           k.nama_kelas,
           su.unit_id,
           wa.id AS wallet_account_id
@@ -859,9 +859,18 @@ async(req,res)=>{
         JOIN santri s
           ON s.id = su.santri_id
          AND s.tenant_id = su.tenant_id
+        LEFT JOIN LATERAL (
+          SELECT ske.kelas_id
+          FROM santri_kelas_enrollments ske
+          WHERE ske.tenant_id = su.tenant_id
+            AND ske.santri_unit_id = su.id
+            AND ske.status = 'active' AND ske.end_date IS NULL
+          ORDER BY ske.id DESC LIMIT 1
+        ) enrollment ON TRUE
         LEFT JOIN kelas k
-          ON k.id = s.kelas_id
-         AND k.tenant_id = s.tenant_id
+          ON k.id = enrollment.kelas_id
+         AND k.tenant_id = su.tenant_id
+         AND k.unit_id = su.unit_id
         LEFT JOIN wallet_accounts wa
           ON wa.tenant_id = su.tenant_id
          AND wa.unit_id = su.unit_id

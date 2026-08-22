@@ -596,6 +596,15 @@
       "notes": "apply after 064; deterministic santri.kelas_id relations only, ambiguous rows remain REVIEW_REQUIRED",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 170
+    },
+    {
+      "filename": "080_remove_legacy_cross_unit_absensi_unique.sql",
+      "checksum": "7f1df3b4250bbaeb774c205632abc3b3279a5beac082b9a9d5f4e1f053d5bcd3",
+      "status": "NOT_APPLIED",
+      "evidence": "production has canonical per-unit index and redundant legacy absensi_unique",
+      "notes": "drop only the tenant-agnostic legacy index after verifying the canonical per-unit index exists",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 180
     }
   ]
 }

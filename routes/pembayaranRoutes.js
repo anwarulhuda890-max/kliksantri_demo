@@ -49,44 +49,50 @@ async function getSantriUnitInActiveUnit(client, tenantId, santriId, unitId) {
   return rows[0] || null;
 }
 
-async function resolveGenerateTargetIds(client, tenantId, { scope, kelas_id, santri_ids, scopedKelasIds }) {
-  const scopeClause = scopedKelasIds ? " AND s.kelas_id = ANY($3::int[])" : "";
+async function resolveGenerateTargetIds(client, tenantId, unitId, { scope, kelas_id, santri_ids, scopedKelasIds }) {
+  const baseSql = `
+    FROM santri_units su
+    JOIN santri s ON s.id = su.santri_id AND s.tenant_id = su.tenant_id
+    LEFT JOIN LATERAL (
+      SELECT ske.kelas_id
+      FROM santri_kelas_enrollments ske
+      WHERE ske.tenant_id = su.tenant_id AND ske.santri_unit_id = su.id
+        AND ske.status = 'active' AND ske.end_date IS NULL
+      ORDER BY ske.id DESC LIMIT 1
+    ) e ON TRUE
+    WHERE su.tenant_id = $1 AND su.unit_id = $2
+      AND su.status = 'active' AND su.left_at IS NULL
+      AND ${SQL_SANTri_AKTIF}`;
   if (scope === "selected" || (!scope && Array.isArray(santri_ids) && santri_ids.length)) {
     const ids = [...new Set((santri_ids || []).map((id) => Number(id)).filter(Boolean))];
     if (ids.length === 0) return [];
 
     const result = await client.query(
-      `SELECT s.id
-       FROM santri s
-       WHERE s.tenant_id = $1
-         AND s.id = ANY($2::int[])
-         AND ${SQL_SANTri_AKTIF}${scopeClause}
+      `SELECT s.id ${baseSql}
+         AND s.id = ANY($3::int[])
+         AND ($4::int[] IS NULL OR e.kelas_id = ANY($4::int[]))
        ORDER BY s.id`,
-      scopedKelasIds ? [tenantId, ids, scopedKelasIds] : [tenantId, ids],
+      [tenantId, unitId, ids, scopedKelasIds],
     );
     return result.rows.map((row) => row.id);
   }
 
   if (scope === "kelas" && kelas_id) {
     const result = await client.query(
-      `SELECT s.id
-       FROM santri s
-       WHERE s.tenant_id = $1
-         AND s.kelas_id = $2${scopedKelasIds ? " AND s.kelas_id = ANY($3::int[])" : ""}
-         AND ${SQL_SANTri_AKTIF}
+      `SELECT s.id ${baseSql}
+         AND e.kelas_id = $3
+         AND ($4::int[] IS NULL OR e.kelas_id = ANY($4::int[]))
        ORDER BY s.id`,
-      scopedKelasIds ? [tenantId, Number(kelas_id), scopedKelasIds] : [tenantId, Number(kelas_id)],
+      [tenantId, unitId, Number(kelas_id), scopedKelasIds],
     );
     return result.rows.map((row) => row.id);
   }
 
   const result = await client.query(
-    `SELECT s.id
-     FROM santri s
-     WHERE s.tenant_id = $1
-       AND ${SQL_SANTri_AKTIF}${scopedKelasIds ? " AND s.kelas_id = ANY($2::int[])" : ""}
+    `SELECT s.id ${baseSql}
+       AND ($3::int[] IS NULL OR e.kelas_id = ANY($3::int[]))
      ORDER BY s.id`,
-    scopedKelasIds ? [tenantId, scopedKelasIds] : [tenantId],
+    [tenantId, unitId, scopedKelasIds],
   );
   return result.rows.map((row) => row.id);
 }
@@ -501,7 +507,7 @@ router.get("/generate-preview", async (req, res) => {
       .filter(Boolean);
 
     const scopedKelasIds = await getScopedKelasIds(req, client);
-    const targetIds = await resolveGenerateTargetIds(client, req.tenantId, {
+    const targetIds = await resolveGenerateTargetIds(client, req.tenantId, access.unitId, {
       scope,
       kelas_id,
       santri_ids,
@@ -537,7 +543,7 @@ router.post("/generate", async (req, res) => {
     } = req.body;
 
     const scopedKelasIds = await getScopedKelasIds(req, client);
-    const targetIds = await resolveGenerateTargetIds(client, req.tenantId, {
+    const targetIds = await resolveGenerateTargetIds(client, req.tenantId, access.unitId, {
       scope,
       kelas_id,
       santri_ids,

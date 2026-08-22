@@ -8,6 +8,8 @@ import Button, { actionBarStyle } from "../components/ui/Button";
 import { Table, TableScroll } from "../components/ui/table";
 import { exportExcel } from "../utils/exportExcel";
 import { hasPermission } from "../utils/hasPermission";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 const SESI_LIST = [
   "Ngaji Pagi",
@@ -73,6 +75,8 @@ function absensiStatusLabel(status) {
 }
 
 function AbsensiPage() {
+  const { activeUnitId, allUnitsAllowed } = useActiveUnit();
+  const scopeParams = buildUnitScopeParams({ activeUnitId, allUnitsAllowed });
   const [kelas, setKelas] = useState([]);
   const [kelasId, setKelasId] = useState("");
   const [bulan, setBulan] = useState(new Date().getMonth() + 1);
@@ -91,7 +95,7 @@ function AbsensiPage() {
     const seq = ++fetchSeqRef.current;
     try {
       const response = await api.get("/absensi", {
-        params: { bulan: b, tahun: t },
+        params: { ...scopeParams, bulan: b, tahun: t },
       });
 
       if (seq !== fetchSeqRef.current) {
@@ -125,7 +129,7 @@ function AbsensiPage() {
 
   const getKelas = async () => {
     try {
-      const response = await api.get("/absensi/kelas");
+      const response = await api.get("/absensi/kelas", { params: scopeParams });
       const list = response.data.data || [];
       setKelas(list);
       if (list.length === 1) {
@@ -146,7 +150,7 @@ function AbsensiPage() {
 
     try {
       const response = await api.get("/absensi/santri", {
-        params: { kelas_id: id },
+        params: { ...scopeParams, kelas_id: id },
       });
       setSantri(response.data.data || []);
     } catch (err) {
@@ -156,13 +160,15 @@ function AbsensiPage() {
   };
 
   useEffect(() => {
+    setKelasId("");
+    setSantri([]);
     getKelas();
-  }, []);
+  }, [activeUnitId, allUnitsAllowed]);
 
   useEffect(() => {
     getAbsensi(bulan, tahun);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bulan, tahun]);
+  }, [bulan, tahun, activeUnitId, allUnitsAllowed]);
 
   const handleAbsensi = (sesi, santriId, hari, value) => {
     const key = buildKey(sesi, santriId, bulan, tahun, hari);
@@ -185,6 +191,7 @@ function AbsensiPage() {
     }
 
     try {
+      const unitPayload = requireActiveUnitForWrite({ activeUnitId });
       for (const [key, status] of entries) {
         const parsed = parseKey(key);
         if (!parsed) continue;
@@ -193,6 +200,7 @@ function AbsensiPage() {
         const tanggal = `${tKey}-${String(bKey).padStart(2, "0")}-${String(hari).padStart(2, "0")}`;
 
         await api.post("/absensi", {
+          ...unitPayload,
           santri_id: santriId,
           tanggal,
           sesi,

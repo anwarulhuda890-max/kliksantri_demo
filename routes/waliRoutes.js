@@ -7,15 +7,21 @@ const bcrypt = require("bcryptjs");
 const tenantMiddleware = require("../middleware/tenantMiddleware");
 const waliAppService = require("../services/waliAppService");
 const { assertSantriInTenant } = require("../services/tenantScope");
-const { getScopedKelasIds, assertSantriInScopedUnit } = require("../middleware/dataUnitScope");
+const { getScopedUnitIds, assertSantriInScopedUnit } = require("../middleware/dataUnitScope");
 
 const DEFAULT_PIN = "456789";
 const withTenant = [tenantMiddleware];
 
 router.get("/", ...withTenant, async (req, res) => {
   try {
-    const scopedKelasIds = await getScopedKelasIds(req);
-    const scopeSql = scopedKelasIds ? " AND santri.kelas_id = ANY($2::int[])" : "";
+    const scopedUnitIds = await getScopedUnitIds(req);
+    const scopeSql = scopedUnitIds ? ` AND EXISTS (
+      SELECT 1 FROM santri_units su
+      WHERE su.tenant_id = wali_santri.tenant_id
+        AND su.santri_id = wali_santri.santri_id
+        AND su.unit_id = ANY($2::int[])
+        AND su.status = 'active' AND su.left_at IS NULL
+    )` : "";
     const result = await pool.query(
       `SELECT
          wali_santri.*,
@@ -27,7 +33,7 @@ router.get("/", ...withTenant, async (req, res) => {
         AND santri.tenant_id = wali_santri.tenant_id
        WHERE wali_santri.tenant_id = $1${scopeSql}
        ORDER BY wali_santri.id DESC`,
-      scopedKelasIds ? [req.tenantId, scopedKelasIds] : [req.tenantId]
+      scopedUnitIds ? [req.tenantId, scopedUnitIds] : [req.tenantId]
     );
 
     res.json({ success: true, data: result.rows });
@@ -54,7 +60,6 @@ router.post("/", ...withTenant, async (req, res) => {
     }
     const scopeCheck = await assertSantriInScopedUnit(req, santri_id, client);
     if (!scopeCheck.ok) return res.status(403).json({ success: false, error: scopeCheck.error });
-
     await client.query("BEGIN");
 
     const result = await client.query(
@@ -105,12 +110,21 @@ router.put("/:id", ...withTenant, async (req, res) => {
     }
     const scopeCheck = await assertSantriInScopedUnit(req, santri_id, client);
     if (!scopeCheck.ok) return res.status(403).json({ success: false, error: scopeCheck.error });
+    const scopedUnitIds = await getScopedUnitIds(req, client);
 
     await client.query("BEGIN");
 
     const oldResult = await client.query(
-      `SELECT nomor_hp FROM wali_santri WHERE id = $1 AND tenant_id = $2`,
-      [id, req.tenantId]
+      `SELECT nomor_hp FROM wali_santri
+       WHERE id = $1 AND tenant_id = $2
+         AND ($3::int[] IS NULL OR EXISTS (
+           SELECT 1 FROM santri_units su
+           WHERE su.tenant_id = wali_santri.tenant_id
+             AND su.santri_id = wali_santri.santri_id
+             AND su.unit_id = ANY($3::int[])
+             AND su.status = 'active' AND su.left_at IS NULL
+         ))`,
+      [id, req.tenantId, scopedUnitIds]
     );
 
     if (oldResult.rows.length === 0) {
@@ -162,7 +176,7 @@ router.put("/:id", ...withTenant, async (req, res) => {
 
 router.post("/sync-akun", ...withTenant, async (req, res) => {
   try {
-    const scopedKelasIds = await getScopedKelasIds(req);
+    const scopedUnitIds = await getScopedUnitIds(req);
     const waliList = await pool.query(
       `SELECT id, nomor_hp, nama
        FROM wali_santri
@@ -170,10 +184,13 @@ router.post("/sync-akun", ...withTenant, async (req, res) => {
          AND nomor_hp IS NOT NULL
          AND TRIM(nomor_hp) <> ''
          AND ($2::int[] IS NULL OR santri_id IN (
-           SELECT s.id FROM santri s WHERE s.id = wali_santri.santri_id AND s.kelas_id = ANY($2::int[])
+           SELECT su.santri_id FROM santri_units su
+           WHERE su.tenant_id = wali_santri.tenant_id
+             AND su.unit_id = ANY($2::int[])
+             AND su.status = 'active' AND su.left_at IS NULL
          ))
        ORDER BY id ASC`,
-      [req.tenantId, scopedKelasIds]
+      [req.tenantId, scopedUnitIds]
     );
 
     let created = 0;
@@ -213,15 +230,18 @@ router.post("/sync-akun", ...withTenant, async (req, res) => {
 
 router.delete("/:id", ...withTenant, async (req, res) => {
   try {
-    const scopedKelasIds = await getScopedKelasIds(req);
+    const scopedUnitIds = await getScopedUnitIds(req);
     const result = await pool.query(
       `DELETE FROM wali_santri
        WHERE id = $1 AND tenant_id = $2
          AND ($3::int[] IS NULL OR santri_id IN (
-           SELECT s.id FROM santri s WHERE s.id = wali_santri.santri_id AND s.kelas_id = ANY($3::int[])
+           SELECT su.santri_id FROM santri_units su
+           WHERE su.tenant_id = wali_santri.tenant_id
+             AND su.unit_id = ANY($3::int[])
+             AND su.status = 'active' AND su.left_at IS NULL
          ))
        RETURNING id`,
-      [req.params.id, req.tenantId, scopedKelasIds]
+      [req.params.id, req.tenantId, scopedUnitIds]
     );
 
     if (result.rows.length === 0) {
@@ -238,15 +258,18 @@ router.delete("/:id", ...withTenant, async (req, res) => {
 router.put("/:id/reset-pin", ...withTenant, async (req, res) => {
   try {
     const { id } = req.params;
-    const scopedKelasIds = await getScopedKelasIds(req);
+    const scopedUnitIds = await getScopedUnitIds(req);
 
     const waliResult = await pool.query(
       `SELECT nomor_hp FROM wali_santri
        WHERE id = $1 AND tenant_id = $2
          AND ($3::int[] IS NULL OR santri_id IN (
-           SELECT s.id FROM santri s WHERE s.id = wali_santri.santri_id AND s.kelas_id = ANY($3::int[])
+           SELECT su.santri_id FROM santri_units su
+           WHERE su.tenant_id = wali_santri.tenant_id
+             AND su.unit_id = ANY($3::int[])
+             AND su.status = 'active' AND su.left_at IS NULL
          ))`,
-      [id, req.tenantId, scopedKelasIds]
+      [id, req.tenantId, scopedUnitIds]
     );
 
     if (waliResult.rows.length === 0) {

@@ -1,8 +1,8 @@
 const pool = require("../db");
-const { getAllowedUnitIds } = require("../services/unitAccessService");
+const { resolveActiveUnit } = require("../services/unitAccessService");
 
 async function getScopedKelasIds(req, client = pool) {
-  const unitIds = await getAllowedUnitIds(req.user, req.tenantId, client);
+  const unitIds = await getScopedUnitIds(req, client);
   if (unitIds === null) return null;
   if (unitIds.length === 0) return [];
   const result = await client.query(
@@ -15,7 +15,8 @@ async function getScopedKelasIds(req, client = pool) {
 }
 
 async function getScopedUnitIds(req, client = pool) {
-  return getAllowedUnitIds(req.user, req.tenantId, client);
+  const access = await resolveActiveUnit(req, client);
+  return access.mode === "ALL" ? null : [access.unitId];
 }
 
 async function assertSantriInScopedUnit(req, santriId, client = pool) {

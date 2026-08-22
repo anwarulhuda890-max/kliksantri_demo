@@ -45,7 +45,7 @@ function buildSahriyahFilters(tenantId, query, access) {
   }
 
   if (query.kelas_id) {
-    conditions.push(`s.kelas_id = $${index}`);
+    conditions.push(`enrollment.kelas_id = $${index}`);
     params.push(Number(query.kelas_id));
     index += 1;
   }
@@ -66,6 +66,14 @@ function buildSahriyahFilters(tenantId, query, access) {
       LEFT JOIN santri s
         ON t.santri_id = s.id
        AND s.tenant_id = t.tenant_id
+      LEFT JOIN LATERAL (
+        SELECT ske.kelas_id
+        FROM santri_kelas_enrollments ske
+        WHERE ske.tenant_id = t.tenant_id
+          AND ske.santri_unit_id = t.santri_unit_id
+          AND ske.status = 'active' AND ske.end_date IS NULL
+        ORDER BY ske.id DESC LIMIT 1
+      ) enrollment ON TRUE
     `,
   };
 }
@@ -134,7 +142,7 @@ router.get("/", async (req, res) => {
     );
 
     let listSql = `
-      SELECT t.*, s.nama, s.nis, s.kelas_id, s.kamar, lp.latest_invoice_id
+      SELECT t.*, s.nama, s.nis, enrollment.kelas_id, s.kamar, lp.latest_invoice_id
       ${joinSql}
       LEFT JOIN LATERAL (
         SELECT ps.id AS latest_invoice_id

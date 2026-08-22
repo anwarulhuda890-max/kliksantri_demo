@@ -9,13 +9,13 @@ import { PerizinanScreen } from '../screens/perizinan/PerizinanScreen';
 import { PelanggaranScreen } from '../screens/pelanggaran/PelanggaranScreen';
 import { KesehatanScreen } from '../screens/kesehatan/KesehatanScreen';
 import { useActiveChild } from '../context/ActiveChildContext';
-import { isPesantrenUnit } from '../utils/unitFeatures';
+import { useWaliFeatures } from '../hooks/useWaliFeatures';
 
 const Stack = createNativeStackNavigator();
 
 export function MonitoringStack() {
   const { activeChild } = useActiveChild();
-  const pesantren = isPesantrenUnit(activeChild);
+  const { features } = useWaliFeatures(activeChild);
   return (
     <Stack.Navigator screenOptions={stackHeaderOptions}>
       <Stack.Screen
@@ -25,10 +25,10 @@ export function MonitoringStack() {
       />
       <Stack.Screen name="Absensi" component={AbsensiScreen} options={{ title: 'Absensi' }} />
       <Stack.Screen name="Nilai" component={NilaiScreen} options={{ title: 'Nilai Akademik' }} />
-      {pesantren ? <Stack.Screen name="Hafalan" component={HafalanScreen} options={{ title: 'Hafalan' }} /> : null}
-      {pesantren ? <Stack.Screen name="Perizinan" component={PerizinanScreen} options={{ title: 'Riwayat Izin' }} /> : null}
-      {pesantren ? <Stack.Screen name="Pelanggaran" component={PelanggaranScreen} options={{ title: 'Pelanggaran' }} /> : null}
-      {pesantren ? <Stack.Screen name="Kesehatan" component={KesehatanScreen} options={{ title: 'Kesehatan' }} /> : null}
+      {features.hafalan ? <Stack.Screen name="Hafalan" component={HafalanScreen} options={{ title: 'Hafalan' }} /> : null}
+      {features.perizinan ? <Stack.Screen name="Perizinan" component={PerizinanScreen} options={{ title: 'Riwayat Izin' }} /> : null}
+      {features.pelanggaran ? <Stack.Screen name="Pelanggaran" component={PelanggaranScreen} options={{ title: 'Pelanggaran' }} /> : null}
+      {features.kesehatan ? <Stack.Screen name="Kesehatan" component={KesehatanScreen} options={{ title: 'Kesehatan' }} /> : null}
     </Stack.Navigator>
   );
 }
