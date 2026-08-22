@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
 import Card from "../components/ui/Card";
@@ -24,8 +24,11 @@ import {
 } from "../components/ui/form";
 import { exportExcel } from "../utils/exportExcel";
 import { formatCurrency, formatNumber } from "../utils/formatCurrency";
+import { useActiveUnit } from "../context/ActiveUnitContext";
+import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
 function BukuKasPage() {
+  const { activeUnitId, activeUnit, allUnitsAllowed } = useActiveUnit();
   const [data, setData] = useState([]);
   const [search, setSearch] = useState("");
   const [editId, setEditId] = useState(null);
@@ -39,27 +42,34 @@ function BukuKasPage() {
     nominal: "",
     petugas: "",
   });
+  const [message, setMessage] = useState("");
+
+  const readScopeParams = useMemo(
+    () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
+    [activeUnitId, allUnitsAllowed],
+  );
 
   const getData = async () => {
-    const response = await api.get("/buku-kas");
-
-    
-    
-
+    const response = await api.get("/buku-kas", {
+      params: readScopeParams,
+    });
     setData(response.data.data);
   };
 
   const simpan = async () => {
     try {
+      const unitPayload = requireActiveUnitForWrite({ activeUnitId });
       if (editId) {
         await api.put(`/buku-kas/${editId}`, {
           ...form,
           nominal: Number(form.nominal),
+          ...unitPayload,
         });
       } else {
         await api.post("/buku-kas", {
           ...form,
           nominal: Number(form.nominal),
+          ...unitPayload,
         });
       }
 
@@ -76,9 +86,10 @@ function BukuKasPage() {
 
       await getData();
 
-      alert(editId ? "Data berhasil diupdate" : "Data berhasil disimpan");
+      setMessage(editId ? "Data berhasil diupdate" : "Data berhasil disimpan");
     } catch (err) {
       console.error(err);
+      setMessage(err.response?.data?.error || err.message || "Gagal menyimpan Buku Kas");
     }
   };
 
@@ -86,10 +97,12 @@ function BukuKasPage() {
     if (!window.confirm("Hapus transaksi?")) return;
 
     try {
-      await api.delete(`/buku-kas/${id}`);
+      const unitPayload = requireActiveUnitForWrite({ activeUnitId });
+      await api.delete(`/buku-kas/${id}`, { params: unitPayload });
       await getData();
     } catch (err) {
       console.error(err);
+      setMessage(err.response?.data?.error || err.message || "Gagal menghapus Buku Kas");
     }
   };
 
@@ -107,7 +120,7 @@ function BukuKasPage() {
 
   useEffect(() => {
     getData();
-  }, []);
+  }, [readScopeParams]);
 
   const dataTahunan = data.filter(
     (d) => Number(String(d.tanggal).split("-")[0]) === tahun,
@@ -173,6 +186,10 @@ function BukuKasPage() {
     <AppShell title="Buku Kas" breadcrumb="Keuangan / Buku Kas">
       <KeuanganPageStyles />
       <div className="keuangan-page">
+      <div style={{ marginBottom: 12, color: "var(--text-secondary)", fontSize: 13, fontWeight: 600 }}>
+        Workspace: {activeUnit?.nama || (allUnitsAllowed ? "Semua Unit" : "Unit belum dipilih")}
+        {!activeUnitId && allUnitsAllowed ? " — pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data." : ""}
+      </div>
       <Card padding="md" shadow="card" border={false} radius="xl">
         <FilterBar label="Periode">
           <Select value={bulan} onChange={(e) => setBulan(Number(e.target.value))} aria-label="Bulan">
@@ -284,7 +301,17 @@ function BukuKasPage() {
           </FormGrid>
 
           <FormActionBar className="form-action-bar-v3--compact">
-            <Button onClick={simpan}>{editId ? "Update" : "Simpan"}</Button>
+            <Button onClick={simpan} disabled={!activeUnitId}>{editId ? "Update" : "Simpan"}</Button>
+            {!activeUnitId ? (
+              <span role="status" style={{ color: "var(--danger)", fontSize: 13, fontWeight: 600 }}>
+                Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.
+              </span>
+            ) : null}
+            {message ? (
+              <span role="status" style={{ color: "var(--text-secondary)", fontSize: 13, fontWeight: 600 }}>
+                {message}
+              </span>
+            ) : null}
           </FormActionBar>
         </Card>
       </div>

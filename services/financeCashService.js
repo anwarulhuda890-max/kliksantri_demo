@@ -123,7 +123,7 @@ async function listBukuKas(req, client = pool) {
 async function writeBukuKas(req, { id = null } = {}, client = pool) {
   const access = await resolveActiveUnit(req, client);
   if (access.mode !== "UNIT") {
-    throw accessError("Pilih unit untuk mencatat Buku Kas", 400, "UNIT_REQUIRED");
+    throw accessError("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.", 400, "UNIT_REQUIRED");
   }
   const body = req.body || {};
   const tanggal = body.tanggal || todayDate();
@@ -177,7 +177,7 @@ async function writeBukuKas(req, { id = null } = {}, client = pool) {
 async function deleteBukuKas(req, id, client = pool) {
   const access = await resolveActiveUnit(req, client);
   if (access.mode !== "UNIT") {
-    throw accessError("Pilih unit untuk menghapus Buku Kas", 400, "UNIT_REQUIRED");
+    throw accessError("Pilih unit terlebih dahulu untuk melakukan transaksi/perubahan data.", 400, "UNIT_REQUIRED");
   }
   const { rows } = await client.query(
     `DELETE FROM buku_kas
