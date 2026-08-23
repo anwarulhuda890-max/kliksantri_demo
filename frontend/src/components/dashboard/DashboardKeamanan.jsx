@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import api from "../../services/api";
 import KpiCard from "../ui/KpiCard";
 import KpiGrid from "../ui/KpiGrid";
 import Card from "../ui/Card";
@@ -14,34 +12,8 @@ import { formatNumber } from "../../utils/formatCurrency";
 import { formatDateShort } from "../../utils/formatDate";
 
 function DashboardKeamanan({ summary }) {
-  const [perizinanAktifCount, setPerizinanAktifCount] = useState(0);
-  const [perizinanAktif, setPerizinanAktif] = useState([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadPerizinan = async () => {
-      try {
-        const res = await api.get("/perizinan");
-        if (cancelled) return;
-        const active = (res.data.data || []).filter(
-          (item) => String(item.status || "").toLowerCase() === "keluar",
-        );
-        setPerizinanAktifCount(active.length);
-        setPerizinanAktif(active.slice(0, 5));
-      } catch {
-        if (!cancelled) {
-          setPerizinanAktifCount(0);
-          setPerizinanAktif([]);
-        }
-      }
-    };
-
-    loadPerizinan();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const perizinanAktifCount = Number(summary.belum_kembali || 0);
+  const perizinanAktif = summary.recent_perizinan || [];
 
   const perizinanItems = perizinanAktif.map((item) => ({
     key: `izin-${item.id}`,
@@ -70,7 +42,7 @@ function DashboardKeamanan({ summary }) {
           accent="warning"
         />
         <KpiCard
-          label="Tamu Hari Ini"
+          label="Tamu Yayasan Hari Ini"
           value={formatNumber(summary.tamu_hari_ini || 0)}
           accent="info"
         />

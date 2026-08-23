@@ -3,6 +3,7 @@ const express = require("express");
 const pool = require("../db");
 const { resolveActiveUnit } = require("../services/unitAccessService");
 const { getDashboardFinanceSummary } = require("../services/dashboardFinanceSummaryService");
+const { getDashboardUnitSummary } = require("../services/dashboardUnitSummaryService");
 
 const router = express.Router();
 
@@ -11,6 +12,30 @@ const UNIT_NATIVE_DASHBOARD_FIELDS = [
   "santri_aktif",
   "santri_non_aktif",
   "total_kelas",
+  "total_guru",
+  "persentase_kehadiran_santri",
+  "persentase_kehadiran_guru",
+  "total_hafalan",
+  "rata_nilai",
+  "absensi_hari_ini",
+  "nilai_terisi",
+  "kehadiran_santri_hadir",
+  "kehadiran_santri_total",
+  "kehadiran_guru_hadir",
+  "kehadiran_guru_total",
+  "nilai_total",
+  "total_pelanggaran",
+  "persentase_melanggar",
+  "total_perizinan",
+  "belum_kembali",
+  "santri_poin_tertinggi",
+  "total_pengumuman",
+  "pengumuman_aktif",
+  "pengumuman_terbaru",
+  "recent_perizinan",
+  "kesehatan_sehat",
+  "kesehatan_sakit",
+  "kesehatan_perlu_tindak_lanjut",
   "kas_masuk",
   "kas_keluar",
   "saldo_kas",
@@ -32,24 +57,11 @@ const TENANT_WIDE_DASHBOARD_FIELDS = [
   "total_alumni",
   "total_wali",
   "total_saldo",
-  "persentase_kehadiran_santri",
-  "persentase_kehadiran_guru",
-  "total_hafalan",
-  "rata_nilai",
-  "absensi_hari_ini",
-  "nilai_terisi",
   "total_wali_akun",
   "wali_belum_ganti_pin",
-  "santri_poin_tertinggi",
-  "total_pelanggaran",
-  "total_perizinan",
-  "belum_kembali",
   "tamu_hari_ini",
   "tamu_bulan_ini",
   "tamu_masih_didalam",
-  "kesehatan_sehat",
-  "kesehatan_sakit",
-  "kesehatan_perlu_tindak_lanjut",
 ];
 
 async function queryDashboardSantriCounts(client, tenantId, unitAccess) {
@@ -202,266 +214,12 @@ router.get(
           [tenantId]
         );
 
-
-      // ======================
-      // ABSENSI SANTRI
-      // ======================
-
-      const hadirSantri =
-        await pool.query(
-          `
-          SELECT COUNT(*) AS total
-          FROM absensi
-          WHERE tenant_id = $1
-            AND (status = 'H' OR status = 'Hadir')
-          `,
-          [tenantId]
-        );
-
-      const totalAbsensi =
-        await pool.query(
-          `
-          SELECT COUNT(*) AS total
-          FROM absensi
-          WHERE tenant_id = $1
-          `,
-          [tenantId]
-        );
-
-      // ======================
-      // HAFALAN BULAN INI
-      // ======================
-
-      const totalHafalan =
-        await pool.query(
-          `
-          SELECT COUNT(*) AS total
-          FROM hafalan
-          WHERE tenant_id = $1 AND bulan = $2 AND tahun = $3
-          `,
-          [tenantId, bulanIni, tahunIni]
-        );
-
-      // ======================
-      // RATA NILAI
-      // ======================
-
-      const rataNilai =
-        await pool.query(
-          `
-          SELECT COALESCE(AVG(nilai), 0) AS rata
-          FROM nilai_mingguan
-          WHERE tenant_id = $1 AND bulan = $2 AND tahun = $3
-          `,
-          [tenantId, bulanIni, tahunIni]
-        );
-
-      // ======================
-      // ABSENSI GURU
-      // ======================
-
-      let persentaseGuru = 0;
-
-      try {
-
-        const guruHadir =
-          await pool.query(
-            `
-            SELECT COALESCE(SUM(total_hadir), 0) AS total
-            FROM absensi_guru
-            WHERE tenant_id = $1
-            `,
-            [tenantId]
-          );
-
-        const guruTotal =
-          await pool.query(
-            `
-            SELECT COALESCE(
-              SUM(total_hadir + total_izin + total_sakit + total_alfa),
-              0
-            ) AS total
-            FROM absensi_guru
-            WHERE tenant_id = $1
-            `,
-            [tenantId]
-          );
-
-        persentaseGuru =
-
-          Number(
-            guruTotal.rows[0].total
-          ) === 0
-
-            ? 0
-
-            : Math.round(
-
-                (
-
-                  Number(
-                    guruHadir.rows[0].total
-                  )
-
-                  /
-
-                  Number(
-                    guruTotal.rows[0].total
-                  )
-
-                ) * 100
-
-              );
-
-      }
-
-      catch {
-
-        persentaseGuru = 0;
-
-      }
-
-      // ======================
-      // PERSENTASE SANTRI
-      // ======================
-
-      const persentaseSantri =
-
-        Number(
-          totalAbsensi.rows[0].total
-        ) === 0
-
-          ? 0
-
-          : Math.round(
-
-              (
-
-                Number(
-                  hadirSantri.rows[0].total
-                )
-
-                /
-
-                Number(
-                  totalAbsensi.rows[0].total
-                )
-
-              ) * 100
-
-            );
-
-      // ======================
-// BELUM KEMBALI
-// ======================
-
-const belumKembali =
-  await pool.query(
-    `
-    SELECT COUNT(*) AS total
-    FROM perizinan
-    WHERE tenant_id = $1 AND status = 'keluar'
-    `,
-    [tenantId]
-  );
-
-const totalPerizinan =
-  await pool.query(
-    `
-    SELECT COUNT(*) AS total
-    FROM perizinan
-    WHERE tenant_id = $1
-      AND EXTRACT(MONTH FROM tanggal) = $2
-      AND EXTRACT(YEAR FROM tanggal) = $3
-    `,
-    [tenantId, bulanIni, tahunIni]
-  );
-
-const totalPelanggaran =
-  await pool.query(
-    `
-    SELECT COUNT(*) AS total
-    FROM pelanggaran
-    WHERE tenant_id = $1
-      AND EXTRACT(MONTH FROM tanggal) = $2
-      AND EXTRACT(YEAR FROM tanggal) = $3
-    `,
-    [tenantId, bulanIni, tahunIni]
-  );
-
-const santriMelanggar =
-  await pool.query(
-    `
-    SELECT COUNT(DISTINCT santri_id) AS total
-    FROM pelanggaran
-    WHERE tenant_id = $1
-      AND EXTRACT(MONTH FROM tanggal) = $2
-      AND EXTRACT(YEAR FROM tanggal) = $3
-    `,
-    [tenantId, bulanIni, tahunIni]
-  );
-
-const persentaseMelanggar =
-
-  Number(
-    santri.total || 0
-  ) === 0
-
-    ? 0
-
-    : Math.round(
-
-        (
-
-          Number(
-            santriMelanggar.rows[0].total
-          )
-
-          /
-
-          Number(
-            santri.total || 0
-          )
-
-        ) * 100
-
-      );
-
       // ======================
       // SANTRI AKTIF / NON AKTIF
       // ======================
 
       let santriAktif = Number(santri.aktif || santri.total || 0);
       let santriNonAktif = Number(santri.non_aktif || 0);
-
-      // ======================
-      // ABSENSI HARI INI
-      // ======================
-
-      const absensiHariIni = await pool.query(
-        `SELECT COUNT(*) AS total FROM absensi
-         WHERE tenant_id = $1 AND tanggal = CURRENT_DATE`,
-        [tenantId]
-      );
-
-      const nilaiTerisi = await pool.query(
-        `SELECT COUNT(*) AS total FROM nilai_mingguan
-         WHERE tenant_id = $1 AND bulan = $2 AND tahun = $3`,
-        [tenantId, bulanIni, tahunIni]
-      );
-
-      const santriPoinTertinggi = await pool.query(
-        `SELECT s.nama, COUNT(p.id) AS jumlah_pelanggaran
-         FROM pelanggaran p
-         JOIN santri s ON p.santri_id = s.id AND s.tenant_id = p.tenant_id
-         WHERE p.tenant_id = $1
-           AND EXTRACT(MONTH FROM p.tanggal) = $2
-           AND EXTRACT(YEAR FROM p.tanggal) = $3
-         GROUP BY s.id, s.nama
-         ORDER BY jumlah_pelanggaran DESC
-         LIMIT 5`,
-        [tenantId, bulanIni, tahunIni]
-      );
 
       // ======================
       // WALI AKUN
@@ -489,64 +247,12 @@ const persentaseMelanggar =
         month: bulanIni,
         year: tahunIni,
       });
-      // ======================
-      // DAFTAR TAMU
-      // ======================
-
-const tamuHariIni =
-await pool.query(`
-SELECT COUNT(*) total
-FROM tamu
-WHERE tenant_id = $1 AND tanggal = CURRENT_DATE
-`, [tenantId]);
-
-const tamuBulanIni =
-await pool.query(`
-SELECT COUNT(*) total
-FROM tamu
-WHERE tenant_id = $1
-  AND EXTRACT(MONTH FROM tanggal)=EXTRACT(MONTH FROM CURRENT_DATE)
-  AND EXTRACT(YEAR FROM tanggal)=EXTRACT(YEAR FROM CURRENT_DATE)
-`, [tenantId]);
-
-const tamuMasihDidalam =
-await pool.query(`
-SELECT COUNT(*) total
-FROM tamu
-WHERE tenant_id = $1 AND status='Masuk'
-`, [tenantId]);
-
-const kesehatanStats = await pool.query(`
-  WITH latest AS (
-    SELECT DISTINCT ON (ks.santri_id)
-      ks.santri_id,
-      ks.status_kesehatan,
-      ks.status_penanganan
-    FROM kesehatan_santri ks
-    INNER JOIN santri s ON s.id = ks.santri_id AND s.tenant_id = ks.tenant_id
-    WHERE ks.tenant_id = $1
-      AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif', 'active', '')
-    ORDER BY ks.santri_id, ks.created_at DESC
-  ),
-  santri_aktif AS (
-    SELECT COUNT(*)::int AS total
-    FROM santri
-    WHERE tenant_id = $1
-      AND LOWER(TRIM(COALESCE(status, 'aktif'))) IN ('aktif', 'active', '')
-  )
-  SELECT
-    (SELECT total FROM santri_aktif) AS total_santri,
-    COUNT(*) FILTER (WHERE l.status_kesehatan = 'sakit')::int AS sakit,
-    COUNT(*) FILTER (
-      WHERE l.status_kesehatan = 'sakit'
-        AND l.status_penanganan IN ('observasi', 'istirahat')
-    )::int AS perlu_tindak_lanjut
-  FROM latest l
-`, [tenantId]);
-
-const kStat = kesehatanStats.rows[0] || {};
-const kTotalSantri = Number(kStat.total_santri || 0);
-const kSakit = Number(kStat.sakit || 0);
+      const unitSummary = await getDashboardUnitSummary(pool, {
+        tenantId,
+        unitId: isUnitScope ? unitAccess.unitId : null,
+        month: bulanIni,
+        year: tahunIni,
+      });
 
       res.json({
 
@@ -558,7 +264,8 @@ const kSakit = Number(kStat.sakit || 0);
           unit_id: isUnitScope ? unitAccess.unitId : null,
           unit_name: isUnitScope ? unitAccess.unit?.nama || null : null,
           generated_at: new Date().toISOString(),
-          data_quality: isUnitScope ? "unit_native_partial" : "tenant_aggregate_mixed",
+          data_quality: "unit_native_with_explicit_tenant_fields",
+          tenant_kpi_contract: { tamu: "TENANT" },
           unit_native_fields: UNIT_NATIVE_DASHBOARD_FIELDS,
           tenant_wide_fields: TENANT_WIDE_DASHBOARD_FIELDS,
         },
@@ -580,6 +287,9 @@ const kSakit = Number(kStat.sakit || 0);
           total_kelas:
             totalKelas,
 
+          total_guru:
+            unitSummary.academic.total_guru,
+
           total_wali:
             Number(wali.rows[0].total),
 
@@ -587,28 +297,40 @@ const kSakit = Number(kStat.sakit || 0);
             Number(saldo.rows[0].total_saldo),
 
           persentase_kehadiran_santri:
-            persentaseSantri,
+            unitSummary.academic.persentase_kehadiran_santri,
 
           persentase_kehadiran_guru:
-            persentaseGuru,
+            unitSummary.academic.persentase_kehadiran_guru,
 
           total_hafalan:
-            Number(totalHafalan.rows[0].total),
+            unitSummary.academic.total_hafalan,
 
           rata_nilai:
-            Math.round(rataNilai.rows[0].rata),
+            unitSummary.academic.rata_nilai,
 
           absensi_hari_ini:
-            Number(absensiHariIni.rows[0].total),
+            unitSummary.academic.absensi_hari_ini,
 
           nilai_terisi:
-            Number(nilaiTerisi.rows[0].total),
+            unitSummary.academic.nilai_terisi,
+
+          kehadiran_santri_hadir:
+            unitSummary.academic.santri_hadir,
+
+          kehadiran_santri_total:
+            unitSummary.academic.santri_absensi_total,
+
+          kehadiran_guru_hadir:
+            unitSummary.academic.guru_hadir,
+
+          kehadiran_guru_total:
+            unitSummary.academic.guru_absensi_total,
+
+          nilai_total:
+            unitSummary.academic.nilai_total,
 
           santri_poin_tertinggi:
-            santriPoinTertinggi.rows.map(r => ({
-              nama: r.nama,
-              jumlah_pelanggaran: Number(r.jumlah_pelanggaran)
-            })),
+            unitSummary.operational.santri_poin_tertinggi,
 
           total_wali_akun:
             totalWaliAkun,
@@ -617,22 +339,30 @@ const kSakit = Number(kStat.sakit || 0);
             waliBelumGantiPin,
 
 belum_kembali:
-  Number(
-    belumKembali.rows[0].total
-  ),
+  unitSummary.operational.belum_kembali,
 
 total_perizinan:
-  Number(
-    totalPerizinan.rows[0].total
-  ),
+  unitSummary.operational.total_perizinan,
 
 total_pelanggaran:
-  Number(
-    totalPelanggaran.rows[0].total
-  ),
+  unitSummary.operational.total_pelanggaran,
+
+recent_perizinan:
+  unitSummary.operational.recent_perizinan,
+
+total_pengumuman:
+  unitSummary.operational.total_pengumuman,
+
+pengumuman_aktif:
+  unitSummary.operational.pengumuman_aktif,
+
+pengumuman_terbaru:
+  unitSummary.operational.pengumuman_terbaru,
 
 persentase_melanggar:
-  persentaseMelanggar,
+  unitSummary.health.total === 0
+    ? 0
+    : Math.round((unitSummary.operational.santri_melanggar / unitSummary.health.total) * 100),
 
   kas_masuk:
   financeSummary.cash.masuk,
@@ -680,28 +410,22 @@ top_tunggakan:
   financeSummary.top_tunggakan,
 
 tamu_hari_ini:
-Number(
-  tamuHariIni.rows[0].total
-),
+  unitSummary.guests.hari_ini,
 
 tamu_bulan_ini:
-Number(
-  tamuBulanIni.rows[0].total
-),
+  unitSummary.guests.bulan_ini,
 
 tamu_masih_didalam:
-Number(
-  tamuMasihDidalam.rows[0].total
-),
+  unitSummary.guests.masih_didalam,
 
 kesehatan_sehat:
-  Math.max(kTotalSantri - kSakit, 0),
+  unitSummary.health.sehat,
 
 kesehatan_sakit:
-  kSakit,
+  unitSummary.health.sakit,
 
 kesehatan_perlu_tindak_lanjut:
-  Number(kStat.perlu_tindak_lanjut || 0),
+  unitSummary.health.perlu_tindak_lanjut,
 
         }
 

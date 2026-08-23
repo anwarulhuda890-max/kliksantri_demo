@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import api from "../../services/api";
 import KpiCard from "../ui/KpiCard";
 import KpiGrid from "../ui/KpiGrid";
 import Card from "../ui/Card";
@@ -7,28 +5,6 @@ import { DASHBOARD_PANEL, ExecSectionTitle } from "./dashboardShared.jsx";
 import { formatNumber } from "../../utils/formatCurrency";
 
 function DashboardPendidikan({ summary }) {
-  const [totalGuru, setTotalGuru] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadGuru = async () => {
-      try {
-        const res = await api.get("/guru");
-        if (!cancelled) {
-          setTotalGuru((res.data.data || []).length);
-        }
-      } catch {
-        if (!cancelled) setTotalGuru(0);
-      }
-    };
-
-    loadGuru();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return (
     <div className="dashboard-role-v3">
       <KpiGrid>
@@ -39,7 +15,7 @@ function DashboardPendidikan({ summary }) {
         />
         <KpiCard
           label="Total Guru"
-          value={totalGuru === null ? "—" : formatNumber(totalGuru)}
+          value={formatNumber(summary.total_guru || 0)}
           accent="info"
         />
         <KpiCard

@@ -19,6 +19,7 @@
     "test:multi-unit-santri-kelas": "node scripts/test-multi-unit-santri-kelas.js",
     "test:universal-unit": "node scripts/test-universal-unit-architecture.js",
     "test:dashboard-finance-scope": "node scripts/test-dashboard-finance-unit-scope.js",
+    "test:dashboard-unit-contract": "node scripts/test-dashboard-unit-contract.js",
     "test:admin-session-versioning": "node scripts/test-admin-session-versioning.js",
     "test:admin-session-migration-db": "node scripts/test-admin-session-migration-db.js",
     "test:migration-reconciliation": "node scripts/test-migration-reconciliation.js",

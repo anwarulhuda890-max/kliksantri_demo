@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
 import { DashboardResponsiveStyles } from "../components/dashboard/DashboardResponsiveStyles";
@@ -32,6 +32,7 @@ function createEmptySummary() {
     santri_aktif: 0,
     santri_non_aktif: 0,
     total_kelas: 0,
+    total_guru: 0,
     total_wali: 0,
     total_saldo: 0,
     persentase_kehadiran_santri: 0,
@@ -40,6 +41,11 @@ function createEmptySummary() {
     rata_nilai: 0,
     absensi_hari_ini: 0,
     nilai_terisi: 0,
+    kehadiran_santri_hadir: 0,
+    kehadiran_santri_total: 0,
+    kehadiran_guru_hadir: 0,
+    kehadiran_guru_total: 0,
+    nilai_total: 0,
     total_wali_akun: 0,
     wali_belum_ganti_pin: 0,
     santri_poin_tertinggi: [],
@@ -57,6 +63,10 @@ function createEmptySummary() {
     total_pelanggaran: 0,
     total_perizinan: 0,
     belum_kembali: 0,
+    recent_perizinan: [],
+    total_pengumuman: 0,
+    pengumuman_aktif: 0,
+    pengumuman_terbaru: [],
     tamu_hari_ini: 0,
     tamu_bulan_ini: 0,
     tamu_masih_didalam: 0,
@@ -81,6 +91,7 @@ function DashboardPage() {
   const [summaryMeta, setSummaryMeta] = useState({ scope: "all", all_units: true });
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
+  const summaryRequestRef = useRef({ sequence: 0, controller: null });
 
   const role = user?.role || "";
   const canViewDashboardData = hasPermission("dashboard.view");
@@ -106,10 +117,16 @@ function DashboardPage() {
   }));
 
   const getSummary = useCallback(async () => {
+    summaryRequestRef.current.controller?.abort();
+    const controller = new AbortController();
+    const sequence = summaryRequestRef.current.sequence + 1;
+    summaryRequestRef.current = { sequence, controller };
+
     if (!activeUnitId && !allUnitsAllowed) {
       setSummary(createEmptySummary());
       setSummaryMeta({ scope: "blocked", all_units: false });
       setSummaryError("Belum memiliki penugasan unit. Minta superadmin mengatur unit untuk akun ini.");
+      setSummaryLoading(false);
       return;
     }
 
@@ -117,10 +134,12 @@ function DashboardPage() {
       setSummaryLoading(true);
       setSummaryError("");
       const params = activeUnitId ? { unit_id: activeUnitId } : { scope: "all" };
-      const response = await api.get("/dashboard/summary", { params });
+      const response = await api.get("/dashboard/summary", { params, signal: controller.signal });
+      if (summaryRequestRef.current.sequence !== sequence) return;
       setSummary(response.data.data);
       setSummaryMeta(response.data.meta || { scope: activeUnitId ? "unit" : "all" });
     } catch (err) {
+      if (controller.signal.aborted || summaryRequestRef.current.sequence !== sequence) return;
       console.error(err);
       const code = err.response?.data?.code;
       setSummary(createEmptySummary());
@@ -130,7 +149,7 @@ function DashboardPage() {
           : err.response?.data?.error || "Ringkasan dashboard belum dapat dimuat."
       );
     } finally {
-      setSummaryLoading(false);
+      if (summaryRequestRef.current.sequence === sequence) setSummaryLoading(false);
     }
   }, [activeUnitId, allUnitsAllowed]);
 
@@ -138,7 +157,12 @@ function DashboardPage() {
     if (canViewDashboardData && dashboardScopeReady) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       getSummary();
+    } else {
+      summaryRequestRef.current.controller?.abort();
+      summaryRequestRef.current.sequence += 1;
+      setSummaryLoading(false);
     }
+    return () => summaryRequestRef.current.controller?.abort();
   }, [canViewDashboardData, dashboardScopeReady, getSummary]);
 
   return (
@@ -159,8 +183,8 @@ function DashboardPage() {
               </strong>
               <span>
                 {isUnitWorkspace
-                  ? "Dashboard menampilkan Santri dan Kelas berbasis unit. Ringkasan lama yang belum unit-native disembunyikan agar tidak terlihat sebagai angka unit."
-                  : "Dashboard menampilkan agregasi yayasan/tenant dengan santri unik, bukan jumlah membership."}
+                  ? "KPI unit mengikuti workspace aktif. KPI Tamu tetap berkontrak tenant/yayasan."
+                  : "Dashboard menampilkan agregasi backend seluruh unit; KPI tenant/yayasan ditandai terpisah."}
               </span>
             </div>
           </section>
@@ -204,7 +228,7 @@ function DashboardPage() {
           </section>
         ) : null}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "superadmin" && (
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "superadmin" && (
           <>
           <section className="dashboard-section dashboard-section--metrics">
             <DashboardMetrics summary={summaryForView} meta={isUnitWorkspace ? { scope: "unit" } : summaryMeta} />
@@ -235,15 +259,15 @@ function DashboardPage() {
           </>
         )}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "keuangan" && <DashboardKeuangan summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "keuangan" && <DashboardKeuangan summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "pendidikan" && <DashboardPendidikan summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "pendidikan" && <DashboardPendidikan summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "keamanan" && <DashboardKeamanan summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "keamanan" && <DashboardKeamanan summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryError && role === "sekretaris" && <DashboardSekretaris summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "sekretaris" && <DashboardSekretaris summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryError && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
           <section className="dashboard-section dashboard-section--metrics">
             <DashboardMetrics summary={summaryForView} meta={isUnitWorkspace ? { scope: "unit" } : summaryMeta} />
           </section>

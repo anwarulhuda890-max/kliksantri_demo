@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import api from "../../services/api";
 import KpiCard from "../ui/KpiCard";
 import KpiGrid from "../ui/KpiGrid";
 import Card from "../ui/Card";
@@ -9,37 +7,15 @@ import { formatNumber } from "../../utils/formatCurrency";
 import { formatDateShort } from "../../utils/formatDate";
 
 function DashboardSekretaris({ summary }) {
-  const [pengumuman, setPengumuman] = useState([]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadPengumuman = async () => {
-      try {
-        const res = await api.get("/pengumuman");
-        if (!cancelled) {
-          setPengumuman(res.data.data || []);
-        }
-      } catch {
-        if (!cancelled) setPengumuman([]);
-      }
-    };
-
-    loadPengumuman();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const pengumumanAktif = pengumuman.filter((item) => item.is_active).length;
-  const recentPengumuman = pengumuman.slice(0, 5);
+  const pengumumanAktif = Number(summary.pengumuman_aktif || 0);
+  const recentPengumuman = summary.pengumuman_terbaru || [];
 
   return (
     <div className="dashboard-role-v3">
       <KpiGrid>
         <KpiCard
           label="Total Pengumuman"
-          value={formatNumber(pengumuman.length)}
+          value={formatNumber(summary.total_pengumuman || 0)}
           accent="primary"
         />
         <KpiCard
