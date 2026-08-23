@@ -6,8 +6,6 @@ import {
   DASHBOARD_PANEL,
   ExecSectionTitle,
   DashboardCompactList,
-  computePembayaranHariIni,
-  computeTagihanBelumLunas,
 } from "./dashboardShared.jsx";
 import { formatCurrency, formatNumber } from "../../utils/formatCurrency";
 import { formatDateShort } from "../../utils/formatDate";
@@ -15,8 +13,8 @@ import { formatDateShort } from "../../utils/formatDate";
 function DashboardKeuangan({ summary }) {
   const transaksiTerbaru = summary?.transaksi_terbaru || [];
   const pembayaranTerbaru = summary?.pembayaran_terbaru || [];
-  const pembayaranHariIni = computePembayaranHariIni(transaksiTerbaru);
-  const tagihanBelumLunas = computeTagihanBelumLunas(pembayaranTerbaru);
+  const pembayaranHariIni = Number(summary?.pembayaran_hari_ini || 0);
+  const tagihanBelumLunas = Number(summary?.tagihan_belum_lunas || 0);
 
   const recentTransactions = transaksiTerbaru.slice(0, 5).map((item) => ({
     key: `trx-${item.id}`,

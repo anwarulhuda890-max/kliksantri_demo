@@ -2,6 +2,7 @@ const express = require("express");
 
 const pool = require("../db");
 const { resolveActiveUnit } = require("../services/unitAccessService");
+const { getDashboardFinanceSummary } = require("../services/dashboardFinanceSummaryService");
 
 const router = express.Router();
 
@@ -10,6 +11,21 @@ const UNIT_NATIVE_DASHBOARD_FIELDS = [
   "santri_aktif",
   "santri_non_aktif",
   "total_kelas",
+  "kas_masuk",
+  "kas_keluar",
+  "saldo_kas",
+  "nominal_tagihan",
+  "sudah_dibayar",
+  "sisa_belum_dibayar",
+  "pembayaran_hari_ini",
+  "tagihan_belum_lunas",
+  "total_pembayaran",
+  "total_tunggakan",
+  "sahriyah_status",
+  "grafik_kas",
+  "transaksi_terbaru",
+  "pembayaran_terbaru",
+  "top_tunggakan",
 ];
 
 const TENANT_WIDE_DASHBOARD_FIELDS = [
@@ -25,22 +41,12 @@ const TENANT_WIDE_DASHBOARD_FIELDS = [
   "total_wali_akun",
   "wali_belum_ganti_pin",
   "santri_poin_tertinggi",
-  "kas_masuk",
-  "kas_keluar",
-  "saldo_kas",
-  "total_pembayaran",
-  "total_tunggakan",
-  "sahriyah_status",
   "total_pelanggaran",
   "total_perizinan",
   "belum_kembali",
   "tamu_hari_ini",
   "tamu_bulan_ini",
   "tamu_masih_didalam",
-  "grafik_kas",
-  "transaksi_terbaru",
-  "pembayaran_terbaru",
-  "top_tunggakan",
   "kesehatan_sehat",
   "kesehatan_sakit",
   "kesehatan_perlu_tindak_lanjut",
@@ -477,368 +483,12 @@ const persentaseMelanggar =
         waliBelumGantiPin = Number(waliAkunResult.rows[0].belum_ganti);
       } catch { /* wali_akun belum dibuat */ }
 
-      // ======================
-      // DASHBOARD KEUANGAN (tenant-scoped)
-      // ======================
-
-const kasMasuk =
-await pool.query(
-
-`
-
-SELECT
-
-COALESCE(
-SUM(nominal),
-0
-) AS total
-
-FROM buku_kas
-
-WHERE tenant_id = $3
-  AND jenis = 'Masuk'
-
-AND EXTRACT(
-MONTH FROM tanggal
-) = $1
-
-AND EXTRACT(
-YEAR FROM tanggal
-) = $2
-
-`,
-
-[
-bulanIni,
-tahunIni,
-tenantId
-]
-
-);
-
-const kasKeluar =
-await pool.query(
-
-`
-
-SELECT
-
-COALESCE(
-SUM(nominal),
-0
-) AS total
-
-FROM buku_kas
-
-WHERE tenant_id = $3
-  AND jenis = 'Keluar'
-
-AND EXTRACT(
-MONTH FROM tanggal
-) = $1
-
-AND EXTRACT(
-YEAR FROM tanggal
-) = $2
-
-`,
-
-[
-bulanIni,
-tahunIni,
-tenantId
-]
-
-);
-
-const pembayaranSahriyah =
-await pool.query(
-
-`
-
-SELECT
-
-COALESCE(
-SUM(total_bayar),
-0
-) AS total
-
-FROM tagihan_sahriyah
-
-WHERE tenant_id = $1
-  AND bulan = $2
-  AND tahun = $3
-
-`,
-
-[tenantId, bulanIni, tahunIni]
-
-);
-
-const tunggakanSahriyah =
-await pool.query(
-
-`
-
-WITH current_bills AS (
-  SELECT DISTINCT ON (santri_id)
-    santri_id,
-    status,
-    nominal,
-    total_bayar,
-    sisa_tagihan
-  FROM tagihan_sahriyah
-  WHERE tenant_id = $1
-    AND bulan = $2
-    AND tahun = $3
-  ORDER BY santri_id, id DESC
-)
-SELECT COALESCE(SUM(
-  CASE
-    WHEN b.santri_id IS NULL
-      OR LOWER(TRIM(COALESCE(b.status, ''))) NOT IN ('lunas', 'cicilan')
-      THEN COALESCE(NULLIF(b.nominal, 0), ss.nominal_uang, 0)
-    WHEN LOWER(TRIM(COALESCE(b.status, ''))) LIKE '%cicil%'
-      THEN GREATEST(
-        COALESCE(
-          NULLIF(b.sisa_tagihan, 0),
-          COALESCE(NULLIF(b.nominal, 0), ss.nominal_uang, 0) - COALESCE(b.total_bayar, 0)
-        ),
-        0
-      )
-    ELSE 0
-  END
-), 0)::bigint AS total
-FROM santri s
-LEFT JOIN current_bills b ON b.santri_id = s.id
-LEFT JOIN sahriyah_setting ss
-  ON ss.santri_id = s.id
- AND ss.tenant_id = s.tenant_id
-WHERE s.tenant_id = $1
-
-`,
-
-[tenantId, bulanIni, tahunIni]
-
-);
-
-const statusSahriyah =
-await pool.query(
-  `
-  WITH current_bills AS (
-    SELECT DISTINCT ON (santri_id)
-      santri_id,
-      status,
-      sisa_tagihan
-    FROM tagihan_sahriyah
-    WHERE tenant_id = $1
-      AND bulan = $2
-      AND tahun = $3
-    ORDER BY santri_id, id DESC
-  )
-  SELECT
-    COUNT(s.id)::int AS total_santri,
-    COUNT(*) FILTER (
-      WHERE b.santri_id IS NOT NULL
-        AND LOWER(TRIM(COALESCE(b.status, ''))) = 'lunas'
-    )::int AS lunas,
-    COUNT(*) FILTER (
-      WHERE b.santri_id IS NOT NULL
-        AND LOWER(TRIM(COALESCE(b.status, ''))) LIKE '%cicil%'
-    )::int AS cicilan,
-    COUNT(*) FILTER (
-      WHERE b.santri_id IS NULL
-        OR (
-          LOWER(TRIM(COALESCE(b.status, ''))) <> 'lunas'
-          AND LOWER(TRIM(COALESCE(b.status, ''))) NOT LIKE '%cicil%'
-        )
-    )::int AS belum_bayar
-  FROM santri s
-  LEFT JOIN current_bills b ON b.santri_id = s.id
-  WHERE s.tenant_id = $1
-    AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif', 'active', '')
-  `,
-  [tenantId, bulanIni, tahunIni]
-);
-
-// ======================
-// GRAFIK KAS
-// ======================
-
-const grafikKas =
-await pool.query(
-
-`
-
-SELECT
-
-EXTRACT(
-MONTH FROM tanggal
-) AS bulan,
-
-COALESCE(
-
-SUM(
-
-CASE
-
-WHEN jenis = 'Masuk'
-
-THEN nominal
-
-ELSE 0
-
-END
-
-),
-
-0
-
-) AS masuk,
-
-COALESCE(
-
-SUM(
-
-CASE
-
-WHEN jenis = 'Keluar'
-
-THEN nominal
-
-ELSE 0
-
-END
-
-),
-
-0
-
-) AS keluar
-
-FROM buku_kas
-
-WHERE tenant_id = $2
-
-AND
-
-EXTRACT(
-YEAR FROM tanggal
-) = $1
-
-GROUP BY bulan
-
-ORDER BY bulan
-
-`,
-
-[
-tahunIni,
-tenantId
-]
-
-);
-
-// ======================
-// TRANSAKSI TERBARU
-// ======================
-
-const transaksiTerbaru =
-await pool.query(
-
-`
-
-SELECT
-
-id,
-tanggal,
-jenis,
-kategori,
-keterangan,
-nominal,
-petugas
-
-FROM buku_kas
-
-WHERE tenant_id = $1
-
-ORDER BY tanggal DESC,
-id DESC
-
-LIMIT 10
-
-`,
-
-[tenantId]
-
-);
-
-// ======================
-// PEMBAYARAN TERBARU
-// ======================
-
-const pembayaranTerbaru =
-await pool.query(
-
-`
-
-SELECT
-
-p.id,
-p.nama_tagihan,
-p.nominal_bayar,
-p.sisa_tunggakan,
-p.status,
-
-s.nama
-
-FROM pembayaran p
-
-LEFT JOIN santri s
-
-ON p.santri_id = s.id
-AND s.tenant_id = p.tenant_id
-
-WHERE p.tenant_id = $1
-
-ORDER BY p.id DESC
-
-LIMIT 10
-
-`,
-
-[tenantId]
-
-);
-
-// ======================
-// TOP TUNGGAKAN
-// ======================
-
-const topTunggakan =
-await pool.query(
-
-`
-
-SELECT
-s.nama,
-t.sisa_tagihan
-FROM tagihan_sahriyah t
-LEFT JOIN santri s
-ON s.id = t.santri_id
-AND s.tenant_id = t.tenant_id
-WHERE t.tenant_id = $1
-  AND t.sisa_tagihan > 0
-ORDER BY t.sisa_tagihan DESC
-LIMIT 10
-
-`,
-
-[tenantId]
-
-);
-
-
+      const financeSummary = await getDashboardFinanceSummary(pool, {
+        tenantId,
+        unitId: isUnitScope ? unitAccess.unitId : null,
+        month: bulanIni,
+        year: tahunIni,
+      });
       // ======================
       // DAFTAR TAMU
       // ======================
@@ -985,52 +635,49 @@ persentase_melanggar:
   persentaseMelanggar,
 
   kas_masuk:
-  Number(
-    kasMasuk.rows[0].total
-  ),
+  financeSummary.cash.masuk,
 
 kas_keluar:
-  Number(
-    kasKeluar.rows[0].total
-  ),
+  financeSummary.cash.keluar,
 
 saldo_kas:
-  Number(
-    kasMasuk.rows[0].total
-  )
-  -
-  Number(
-    kasKeluar.rows[0].total
-  ),
+  financeSummary.cash.saldo,
+
+nominal_tagihan:
+  financeSummary.payment.nominal_tagihan,
+
+sudah_dibayar:
+  financeSummary.payment.sudah_dibayar,
+
+sisa_belum_dibayar:
+  financeSummary.payment.sisa_belum_dibayar,
+
+pembayaran_hari_ini:
+  financeSummary.payment.pembayaran_hari_ini,
+
+tagihan_belum_lunas:
+  financeSummary.payment.tagihan_belum_lunas,
 
 total_pembayaran:
-  Number(
-    pembayaranSahriyah.rows[0].total
-  ),
+  financeSummary.sahriyah.sudah_dibayar,
 
 total_tunggakan:
-  Number(
-    tunggakanSahriyah.rows[0].total
-  ),
+  financeSummary.sahriyah.sisa_belum_dibayar,
 
-sahriyah_status: {
-  total_santri: Number(statusSahriyah.rows[0].total_santri),
-  lunas: Number(statusSahriyah.rows[0].lunas),
-  cicilan: Number(statusSahriyah.rows[0].cicilan),
-  belum_bayar: Number(statusSahriyah.rows[0].belum_bayar),
-},
+sahriyah_status:
+  financeSummary.sahriyah.status,
 
 grafik_kas:
-  grafikKas.rows,
+  financeSummary.grafik_kas,
 
 transaksi_terbaru:
-  transaksiTerbaru.rows,
+  financeSummary.transaksi_terbaru,
 
 pembayaran_terbaru:
-  pembayaranTerbaru.rows,
+  financeSummary.pembayaran_terbaru,
 
 top_tunggakan:
-topTunggakan.rows,
+  financeSummary.top_tunggakan,
 
 tamu_hari_ini:
 Number(

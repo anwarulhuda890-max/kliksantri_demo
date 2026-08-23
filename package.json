@@ -18,6 +18,7 @@
     "test:multi-unit": "node scripts/test-multi-unit-foundation.js",
     "test:multi-unit-santri-kelas": "node scripts/test-multi-unit-santri-kelas.js",
     "test:universal-unit": "node scripts/test-universal-unit-architecture.js",
+    "test:dashboard-finance-scope": "node scripts/test-dashboard-finance-unit-scope.js",
     "test:admin-session-versioning": "node scripts/test-admin-session-versioning.js",
     "test:admin-session-migration-db": "node scripts/test-admin-session-migration-db.js",
     "test:migration-reconciliation": "node scripts/test-migration-reconciliation.js",
