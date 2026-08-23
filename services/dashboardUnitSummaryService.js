@@ -18,9 +18,11 @@ async function getDashboardUnitSummary(client, { tenantId, unitId, month, year }
     client.query(
       `SELECT
          (SELECT COUNT(*)::int
-          FROM guru g
-          JOIN unit_pendidikan u ON u.id=g.unit_id AND u.tenant_id=g.tenant_id AND u.is_active=true
-          WHERE g.tenant_id=$1 AND ($2::int IS NULL OR g.unit_id=$2)) AS total_guru,
+          FROM guru_units gu
+          JOIN guru g ON g.id=gu.guru_id AND g.tenant_id=gu.tenant_id
+          JOIN unit_pendidikan u ON u.id=gu.unit_id AND u.tenant_id=gu.tenant_id AND u.is_active=true
+          WHERE gu.tenant_id=$1 AND gu.status='active' AND gu.left_at IS NULL
+            AND ($2::int IS NULL OR gu.unit_id=$2)) AS total_guru,
          (SELECT COUNT(*) FILTER (WHERE a.status IN ('H','Hadir'))::int
           FROM absensi a
           JOIN unit_pendidikan u ON u.id=a.unit_id AND u.tenant_id=a.tenant_id AND u.is_active=true
