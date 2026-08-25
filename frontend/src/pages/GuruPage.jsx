@@ -27,6 +27,7 @@ import {
 } from "../components/ui/form";
 import { getUser } from "../utils/storage";
 import { formatNumber } from "../utils/formatCurrency";
+import { useActiveUnit } from "../context/ActiveUnitContext";
 
 const FORM_INIT = {
   nama: "",
@@ -41,6 +42,7 @@ const FORM_INIT = {
 };
 
 function GuruPage() {
+  const { activeUnitId, activeUnit, allUnitsAllowed } = useActiveUnit();
   const user = getUser() || {};
   const role = user?.role || "";
 
@@ -53,17 +55,27 @@ function GuruPage() {
 
   const getGuru = async () => {
     try {
-      const res = await api.get("/guru");
+      const res = await api.get("/guru", {
+        params: activeUnitId ? { unit_id: activeUnitId } : (allUnitsAllowed ? { scope: "all" } : {}),
+      });
       setGuru(res.data.data || []);
     } catch (err) {
       console.error(err);
     }
   };
 
+  // Resetting page state on workspace changes prevents stale cross-unit data.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setGuru([]);
+    setSearch("");
+    setShowForm(false);
+    setEditId(null);
+    setForm(FORM_INIT);
     getGuru();
     api.get("/users/meta/units").then((res) => setUnits(res.data.data || [])).catch(() => {});
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeUnitId, allUnitsAllowed]);
 
   const filteredGuru = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -86,13 +98,17 @@ function GuruPage() {
   };
 
   const openAdd = () => {
-    setForm(FORM_INIT);
+    setForm({ ...FORM_INIT, unit_id: activeUnitId ? String(activeUnitId) : "" });
     setEditId(null);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const openEdit = (g) => {
+    if (!activeUnitId) {
+      alert("Pilih satu unit aktif sebelum mengubah guru.");
+      return;
+    }
     setForm({
       nama: g.nama || "",
       jabatan: g.jabatan || "",
@@ -102,7 +118,7 @@ function GuruPage() {
       tanggal_masuk: g.tanggal_masuk ? String(g.tanggal_masuk).slice(0, 10) : "",
       status: g.status || "Aktif",
       catatan: g.catatan || "",
-      unit_id: g.unit_id ? String(g.unit_id) : "",
+      unit_id: activeUnitId ? String(activeUnitId) : (g.unit_id ? String(g.unit_id) : ""),
     });
     setEditId(g.id);
     setShowForm(true);
@@ -120,6 +136,10 @@ function GuruPage() {
       alert("Nama guru wajib diisi.");
       return;
     }
+    if (!activeUnitId || !form.unit_id) {
+      alert("Pilih satu unit aktif sebelum menyimpan guru.");
+      return;
+    }
     try {
       if (editId) {
         await api.put(`/guru/${editId}`, form);
@@ -134,6 +154,10 @@ function GuruPage() {
   };
 
   const handleToggleStatus = async (g) => {
+    if (!activeUnitId) {
+      alert("Pilih satu unit aktif sebelum mengubah status guru.");
+      return;
+    }
     const newStatus = g.status === "Aktif" ? "Nonaktif" : "Aktif";
     const label = newStatus === "Nonaktif" ? "Nonaktifkan" : "Aktifkan kembali";
     if (!window.confirm(`${label} guru "${g.nama}"?`)) return;
@@ -148,7 +172,7 @@ function GuruPage() {
         tanggal_masuk: g.tanggal_masuk ? String(g.tanggal_masuk).slice(0, 10) : "",
         status: newStatus,
         catatan: g.catatan || "",
-        unit_id: g.unit_id,
+        unit_id: activeUnitId || g.unit_id,
       });
       getGuru();
     } catch (err) {
@@ -157,15 +181,19 @@ function GuruPage() {
   };
 
   const handleHapus = async (g) => {
+    if (!activeUnitId) {
+      alert("Pilih satu unit aktif sebelum menghapus penugasan guru.");
+      return;
+    }
     if (
       !window.confirm(
-        `HAPUS PERMANEN guru "${g.nama}"?\n\nPeringatan: Aksi ini tidak dapat dibatalkan.\nGunakan "Nonaktifkan" jika ingin mempertahankan riwayat.`,
+        `Hapus penugasan guru "${g.nama}" dari unit ${activeUnit?.nama || "aktif"}?\n\nIdentity guru tetap disimpan untuk unit lain dan riwayat.`,
       )
     )
       return;
 
     try {
-      await api.delete(`/guru/${g.id}`);
+      await api.delete(`/guru/${g.id}`, { params: { unit_id: activeUnitId } });
       getGuru();
     } catch (err) {
       alert("Gagal menghapus: " + (err.response?.data?.error || err.message));
@@ -183,6 +211,10 @@ function GuruPage() {
     >
       <OperationalPageStyles />
       <div className="ops-page">
+        <p className="ops-page__meta">
+          Workspace: {activeUnit?.nama || (allUnitsAllowed ? "Semua Unit" : "Unit belum dipilih")}
+          {!activeUnitId && allUnitsAllowed ? " - pilih satu unit untuk menambah atau mengubah guru." : ""}
+        </p>
         <div className="ops-page__summary">
           <div className="ops-page__stat">
             <span className="ops-page__stat-label">Guru Aktif</span>
@@ -259,7 +291,7 @@ function GuruPage() {
               </Select>
             </FormField>
             <FormField label="Unit Pendidikan" htmlFor="guru-unit" required>
-              <Select id="guru-unit" name="unit_id" value={form.unit_id} onChange={handleChange}>
+              <Select id="guru-unit" name="unit_id" value={form.unit_id} onChange={handleChange} disabled={Boolean(activeUnitId)}>
                 <option value="">Pilih Unit</option>
                 {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.nama}</option>)}
               </Select>
@@ -375,7 +407,11 @@ function GuruPage() {
                         <td className="table-v3__cell--muted">{(page - 1) * pageSize + idx + 1}</td>
                         <td className="table-v3__cell--strong">{g.nama}</td>
                         <td>{g.jabatan || <Dash />}</td>
-                        <td>{g.unit_nama || <Dash />}</td>
+                        <td>
+                          {g.memberships?.length
+                            ? g.memberships.map((unit) => unit.unit_nama).filter(Boolean).join(", ")
+                            : (g.unit_nama || <Dash />)}
+                        </td>
                         <td>{g.nomor_hp || <Dash />}</td>
                         <td>{g.email || <Dash />}</td>
                         <td>

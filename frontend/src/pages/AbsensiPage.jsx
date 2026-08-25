@@ -11,6 +11,7 @@ import { exportExcel } from "../utils/exportExcel";
 import { hasPermission } from "../utils/hasPermission";
 import { useActiveUnit } from "../context/ActiveUnitContext";
 import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
+import { MONTH_OPTIONS_ID } from "../constants/monthOptions";
 
 const filterPanelStyle = {
   display: "flex",
@@ -475,9 +476,9 @@ function AbsensiPage() {
             value={bulan}
             onChange={(e) => setBulan(Number(e.target.value))}
           >
-            {Array.from({ length: 12 }).map((_, i) => (
-              <option key={i + 1} value={i + 1}>
-                Bulan {i + 1}
+            {MONTH_OPTIONS_ID.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
               </option>
             ))}
           </select>

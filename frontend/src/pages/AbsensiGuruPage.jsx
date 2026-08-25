@@ -12,6 +12,7 @@ import StatusBadge from "../components/ui/StatusBadge";
 
 import Button, { actionBarStyle } from "../components/ui/Button";
 import { Table, TableScroll } from "../components/ui/table";
+import { MONTH_OPTIONS_ID } from "../constants/monthOptions";
 
 
 
@@ -264,9 +265,9 @@ function AbsensiGuruPage() {
               value={bulan}
               onChange={(e) => setBulan(e.target.value)}
             >
-              {Array.from({ length: 12 }).map((_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  Bulan {i + 1}
+              {MONTH_OPTIONS_ID.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
               ))}
             </select>

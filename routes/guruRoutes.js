@@ -188,6 +188,30 @@ router.post("/", ...withTenant, requirePermission("guru.create"), async (req, re
           JSON.stringify({ source: identity.rows[0] ? "guru.create.link_existing" : "guru.create" }),
         ],
       );
+      const activeMemberships = await client.query(
+        `SELECT id, unit_id, is_primary
+         FROM guru_units
+         WHERE tenant_id = $1 AND guru_id = $2
+           AND status = 'active' AND left_at IS NULL
+         ORDER BY is_primary DESC, joined_at ASC NULLS LAST, id ASC`,
+        [req.tenantId, savedGuru.id],
+      );
+      if (activeMemberships.rows.length > 0 && !activeMemberships.rows.some((row) => row.is_primary)) {
+        await client.query("UPDATE guru_units SET is_primary = true WHERE id = $1", [activeMemberships.rows[0].id]);
+      }
+      const refreshedIdentity = await client.query(
+        `UPDATE guru
+         SET status = $1, unit_id = COALESCE($2, unit_id)
+         WHERE id = $3 AND tenant_id = $4
+         RETURNING *`,
+        [
+          activeMemberships.rows.length > 0 ? "Aktif" : "Nonaktif",
+          activeMemberships.rows[0]?.unit_id || null,
+          savedGuru.id,
+          req.tenantId,
+        ],
+      );
+      savedGuru = refreshedIdentity.rows[0];
       await client.query("COMMIT");
 
       res.json({ success: true, data: savedGuru, linked_existing: Boolean(identity.rows[0]) });
@@ -232,54 +256,85 @@ router.put("/:id", ...withTenant, requirePermission("guru.update"), async (req, 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const result = await client.query(
-      `UPDATE guru
-       SET nama          = $1,
-           jabatan       = $2,
-           nomor_hp      = $3,
-           email         = $4,
-           alamat        = $5,
-           tanggal_masuk = $6,
-           status        = $7,
-           catatan       = $8,
-           unit_id       = $9
-       WHERE id = $10 AND tenant_id = $11
-       RETURNING *`,
-      [
-        nama.trim(),
-        jabatan || null,
-        nomor_hp || null,
-        email || null,
-        alamat || null,
-        tanggal_masuk || null,
-        status || "Aktif",
-        catatan || null,
-        unitValue,
-        id,
-        req.tenantId,
-      ]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: "Guru tidak ditemukan" });
-    }
-
-      await client.query(
-        `INSERT INTO guru_units (tenant_id, guru_id, unit_id, status, joined_at, is_primary, metadata)
-         VALUES ($1, $2, $3, $4, $5, true, $6::jsonb)
-         ON CONFLICT DO NOTHING`,
+      const identity = await client.query(
+        `UPDATE guru
+         SET nama          = $1,
+             jabatan       = $2,
+             nomor_hp      = $3,
+             email         = $4,
+             alamat        = $5,
+             tanggal_masuk = $6,
+             catatan       = $7
+         WHERE id = $8 AND tenant_id = $9
+         RETURNING *`,
         [
-          req.tenantId,
-          id,
-          unitValue,
-          status === "Nonaktif" ? "inactive" : "active",
+          nama.trim(),
+          jabatan || null,
+          nomor_hp || null,
+          email || null,
+          alamat || null,
           tanggal_masuk || null,
-          JSON.stringify({ source: "guru.update" }),
+          catatan || null,
+          id,
+          req.tenantId,
+        ],
+      );
+
+      if (identity.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ success: false, error: "Guru tidak ditemukan" });
+      }
+
+      const removeMembership = status === "Nonaktif";
+      if (removeMembership) {
+        await client.query(
+          `UPDATE guru_units
+           SET status = 'inactive', left_at = NOW(), is_primary = false
+           WHERE tenant_id = $1 AND guru_id = $2 AND unit_id = $3
+             AND status = 'active' AND left_at IS NULL`,
+          [req.tenantId, id, unitValue],
+        );
+      } else {
+        await client.query(
+          `UPDATE guru_units
+           SET status = 'active', left_at = NULL, joined_at = COALESCE(joined_at, $4)
+           WHERE tenant_id = $1 AND guru_id = $2 AND unit_id = $3
+             AND status = 'active' AND left_at IS NULL`,
+          [req.tenantId, id, unitValue, tanggal_masuk || null],
+        );
+      }
+
+      const remaining = await client.query(
+        `SELECT id, unit_id, is_primary
+         FROM guru_units
+         WHERE tenant_id = $1 AND guru_id = $2
+           AND status = 'active' AND left_at IS NULL
+         ORDER BY is_primary DESC, joined_at ASC NULLS LAST, id ASC`,
+        [req.tenantId, id],
+      );
+      if (remaining.rows.length > 0 && !remaining.rows.some((row) => row.is_primary)) {
+        await client.query("UPDATE guru_units SET is_primary = true WHERE id = $1", [remaining.rows[0].id]);
+      }
+      const finalIdentity = await client.query(
+        `UPDATE guru
+         SET status = $1, unit_id = $2
+         WHERE id = $3 AND tenant_id = $4
+         RETURNING *`,
+        [
+          remaining.rows.length > 0 ? "Aktif" : "Nonaktif",
+          remaining.rows[0]?.unit_id || unitValue,
+          id,
+          req.tenantId,
         ],
       );
       await client.query("COMMIT");
 
-      res.json({ success: true, data: result.rows[0] });
+      res.json({
+        success: true,
+        data: finalIdentity.rows[0],
+        membership_removed: removeMembership,
+        remaining_memberships: remaining.rows.length,
+      });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -290,28 +345,78 @@ router.put("/:id", ...withTenant, requirePermission("guru.update"), async (req, 
     sendAcademicError(res, err);
   }
 });
-
 router.delete("/:id", ...withTenant, requirePermission("guru.delete"), async (req, res) => {
   try {
     const { id } = req.params;
     const unitAccess = await resolveAcademicUnit(req);
-    if (unitAccess.mode === "UNIT") {
-      await getGuruInUnit(req.tenantId, id, unitAccess.unitId);
+    if (unitAccess.mode !== "UNIT") {
+      return res.status(400).json({ success: false, error: "Pilih unit aktif untuk menghapus penugasan guru", code: "UNIT_REQUIRED" });
     }
+    await getGuruInUnit(req.tenantId, id, unitAccess.unitId);
 
-    const check = await pool.query(
-      "SELECT id, nama FROM guru WHERE id = $1 AND tenant_id = $2",
-      [id, req.tenantId]
-    );
-    if (check.rows.length === 0) {
-      return res.status(404).json({ success: false, error: "Guru tidak ditemukan" });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const identity = await client.query(
+        "SELECT id, nama FROM guru WHERE id = $1 AND tenant_id = $2 FOR UPDATE",
+        [id, req.tenantId],
+      );
+      if (identity.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ success: false, error: "Guru tidak ditemukan" });
+      }
+
+      const removed = await client.query(
+        `UPDATE guru_units
+         SET status = 'left', left_at = NOW(), is_primary = false
+         WHERE tenant_id = $1 AND guru_id = $2 AND unit_id = $3
+           AND status = 'active' AND left_at IS NULL
+         RETURNING id`,
+        [req.tenantId, id, unitAccess.unitId],
+      );
+      if (removed.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ success: false, error: "Guru bukan anggota unit ini", code: "CROSS_UNIT_GURU" });
+      }
+
+      const remaining = await client.query(
+        `SELECT id, unit_id, is_primary
+         FROM guru_units
+         WHERE tenant_id = $1 AND guru_id = $2
+           AND status = 'active' AND left_at IS NULL
+         ORDER BY is_primary DESC, joined_at ASC NULLS LAST, id ASC`,
+        [req.tenantId, id],
+      );
+      if (remaining.rows.length > 0 && !remaining.rows.some((row) => row.is_primary)) {
+        await client.query("UPDATE guru_units SET is_primary = true WHERE id = $1", [remaining.rows[0].id]);
+      }
+      await client.query(
+        `UPDATE guru
+         SET status = $1, unit_id = $2
+         WHERE id = $3 AND tenant_id = $4`,
+        [
+          remaining.rows.length > 0 ? "Aktif" : "Nonaktif",
+          remaining.rows[0]?.unit_id || unitAccess.unitId,
+          id,
+          req.tenantId,
+        ],
+      );
+      await client.query("COMMIT");
+
+      res.json({
+        success: true,
+        message: `Penugasan guru "${identity.rows[0].nama}" pada unit ${unitAccess.unit?.nama || unitAccess.unitId} berhasil dihapus`,
+        identity_retained: true,
+        remaining_memberships: remaining.rows.length,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-
-    await pool.query("DELETE FROM guru WHERE id = $1 AND tenant_id = $2", [id, req.tenantId]);
-    res.json({ success: true, message: `Guru "${check.rows[0].nama}" berhasil dihapus` });
   } catch (err) {
     sendAcademicError(res, err);
   }
 });
-
 module.exports = router;
