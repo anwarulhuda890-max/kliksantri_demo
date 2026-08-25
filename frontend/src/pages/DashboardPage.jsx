@@ -4,14 +4,11 @@ import AppShell from "../layouts/AppShell";
 import { DashboardResponsiveStyles } from "../components/dashboard/DashboardResponsiveStyles";
 import DashboardMetrics from "../components/dashboard/DashboardMetrics";
 import DashboardHero from "../components/dashboard/DashboardHero";
-import DashboardAnnouncement from "../components/dashboard/DashboardAnnouncement";
-import DashboardViolations from "../components/dashboard/DashboardViolations";
-import DashboardFinanceChart from "../components/dashboard/DashboardFinanceChart";
+import DashboardAllUnitsV1 from "../components/dashboard/DashboardAllUnitsV1";
 import DashboardKeuangan from "../components/dashboard/DashboardKeuangan";
 import DashboardPendidikan from "../components/dashboard/DashboardPendidikan";
 import DashboardKeamanan from "../components/dashboard/DashboardKeamanan";
 import DashboardSekretaris from "../components/dashboard/DashboardSekretaris";
-import DashboardKesehatanHariIni from "../components/dashboard/DashboardKesehatanHariIni";
 import { useActiveUnit } from "../context/ActiveUnitContext";
 import { getUser } from "../utils/storage";
 import { hasPermission } from "../utils/hasPermission";
@@ -91,6 +88,7 @@ function DashboardPage() {
   const [summaryMeta, setSummaryMeta] = useState({ scope: "all", all_units: true });
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
+  const [allUnitsYear, setAllUnitsYear] = useState(() => new Date().getFullYear());
   const summaryRequestRef = useRef({ sequence: 0, controller: null });
 
   const role = user?.role || "";
@@ -107,14 +105,6 @@ function DashboardPage() {
     ? { scope: "unit", unitName: activeUnit?.nama || summaryMeta.unit_name || "Unit" }
     : dashboardScopeReady ? { scope: "all" } : { scope: "blocked" };
   const summaryForView = dashboardScopeReady && !summaryError ? summary : createEmptySummary();
-  const pembayaranTerbaru = summaryForView?.pembayaran_terbaru || [];
-  const grafikKas = (summaryForView?.grafik_kas || []).map((item) => ({
-    bulan: ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"][
-      Number(item.bulan)
-    ],
-    masuk: Number(item.masuk),
-    keluar: Number(item.keluar),
-  }));
 
   const getSummary = useCallback(async () => {
     summaryRequestRef.current.controller?.abort();
@@ -133,8 +123,12 @@ function DashboardPage() {
     try {
       setSummaryLoading(true);
       setSummaryError("");
-      const params = activeUnitId ? { unit_id: activeUnitId } : { scope: "all" };
-      const response = await api.get("/dashboard/summary", { params, signal: controller.signal });
+      const params = activeUnitId
+        ? { unit_id: activeUnitId }
+        : { scope: "all", year: allUnitsYear };
+      const response = activeUnitId
+        ? await api.get("/dashboard/summary", { params, signal: controller.signal })
+        : await api.get("/dashboard/all-units-v1", { params, signal: controller.signal });
       if (summaryRequestRef.current.sequence !== sequence) return;
       setSummary(response.data.data);
       setSummaryMeta(response.data.meta || { scope: activeUnitId ? "unit" : "all" });
@@ -151,7 +145,7 @@ function DashboardPage() {
     } finally {
       if (summaryRequestRef.current.sequence === sequence) setSummaryLoading(false);
     }
-  }, [activeUnitId, allUnitsAllowed]);
+  }, [activeUnitId, allUnitsAllowed, allUnitsYear]);
 
   useEffect(() => {
     if (canViewDashboardData && dashboardScopeReady) {
@@ -184,7 +178,7 @@ function DashboardPage() {
               <span>
                 {isUnitWorkspace
                   ? "KPI unit mengikuti workspace aktif. KPI Tamu tetap berkontrak tenant/yayasan."
-                  : "Dashboard menampilkan agregasi backend seluruh unit; KPI tenant/yayasan ditandai terpisah."}
+                  : "Dashboard Yayasan V1 menampilkan identity unik, kelas, Buku Kas, dan Dompet Santri seluruh unit."}
               </span>
             </div>
           </section>
@@ -229,34 +223,19 @@ function DashboardPage() {
         ) : null}
 
         {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "superadmin" && (
-          <>
-          <section className="dashboard-section dashboard-section--metrics">
-            <DashboardMetrics summary={summaryForView} meta={isUnitWorkspace ? { scope: "unit" } : summaryMeta} />
-          </section>
-
-          {!isUnitWorkspace ? (
-          <>
-          <section className="dashboard-section dashboard-section--panels">
-            <div className="dashboard-row-3">
-              <DashboardKesehatanHariIni summary={summaryForView} />
-              <DashboardAnnouncement
-                pembayaranTerbaru={pembayaranTerbaru}
-                sahriyahStatus={summaryForView.sahriyah_status}
-                totalPembayaran={summaryForView.total_pembayaran}
-                totalTunggakan={summaryForView.total_tunggakan}
+          isUnitWorkspace ? (
+            <section className="dashboard-section dashboard-section--metrics">
+              <DashboardMetrics summary={summaryForView} meta={{ scope: "unit" }} />
+            </section>
+          ) : (
+            <section className="dashboard-section">
+              <DashboardAllUnitsV1
+                data={summaryForView}
+                year={allUnitsYear}
+                onYearChange={setAllUnitsYear}
               />
-              <DashboardViolations
-                topPelanggar={(summaryForView.santri_poin_tertinggi || []).slice(0, 5)}
-              />
-            </div>
-          </section>
-
-          <section className="dashboard-section dashboard-section--chart">
-            <DashboardFinanceChart grafikKas={grafikKas} />
-          </section>
-          </>
-          ) : null}
-          </>
+            </section>
+          )
         )}
 
         {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "keuangan" && <DashboardKeuangan summary={summaryForView} />}

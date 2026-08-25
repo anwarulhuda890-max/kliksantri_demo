@@ -40,7 +40,7 @@ export function DashboardHero({ unitContext }) {
     ? `Dashboard Unit ${unitContext.unitName || ""}`.trim()
     : isBlockedScope
       ? "Dashboard belum siap"
-    : display?.hasCustomName ? display.name : "Dashboard Pesantren";
+    : "Dashboard Yayasan / Semua Unit";
 
   const primaryBannerSrc = useMemo(() => {
     if (!isBannerVisible(profile)) {
@@ -85,7 +85,7 @@ export function DashboardHero({ unitContext }) {
               ? "Ringkasan data unit yang sudah memiliki atribusi unit aman."
               : isBlockedScope
                 ? "Menunggu ruang kerja unit yang valid sebelum menampilkan ringkasan."
-              : "Ringkasan informasi kegiatan dan administrasi pesantren hari ini."}
+              : "Ringkasan Data Base dan Keuangan seluruh unit aktif."}
           </p>
         </div>
 

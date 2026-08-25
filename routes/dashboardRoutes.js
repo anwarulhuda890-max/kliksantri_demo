@@ -1,7 +1,8 @@
 const express = require("express");
 
 const pool = require("../db");
-const { resolveActiveUnit } = require("../services/unitAccessService");
+const { accessError, resolveActiveUnit } = require("../services/unitAccessService");
+const { getDashboardAllUnitsV1 } = require("../services/dashboardAllUnitsV1Service");
 const { getDashboardFinanceSummary } = require("../services/dashboardFinanceSummaryService");
 const { getDashboardUnitSummary } = require("../services/dashboardUnitSummaryService");
 
@@ -169,6 +170,38 @@ function buildDashboardErrorResponse(err) {
     },
   };
 }
+
+// ======================
+// DASHBOARD SEMUA UNIT V1 (READ ONLY)
+// ======================
+
+router.get("/all-units-v1", async (req, res) => {
+  try {
+    const unitAccess = await resolveActiveUnit(req);
+    if (unitAccess.mode !== "ALL") {
+      throw accessError("Dashboard Semua Unit hanya tersedia untuk superadmin", 403, "UNIT_ACCESS_DENIED");
+    }
+    const data = await getDashboardAllUnitsV1(pool, {
+      tenantId: req.tenantId,
+      year: req.query?.year,
+    });
+    res.json({
+      success: true,
+      meta: {
+        scope: "all",
+        all_units: true,
+        read_only: true,
+        contract: "dashboard_all_units_v1",
+        generated_at: new Date().toISOString(),
+      },
+      data,
+    });
+  } catch (err) {
+    const response = buildDashboardErrorResponse(err);
+    if (response.status >= 500) console.error(err);
+    res.status(response.status).json(response.body);
+  }
+});
 
 // ======================
 // DASHBOARD SUMMARY
@@ -448,6 +481,7 @@ kesehatan_perlu_tindak_lanjut:
 
 router._test = {
   buildDashboardErrorResponse,
+  getDashboardAllUnitsV1,
   queryDashboardKelasCount,
   queryDashboardSantriCounts,
 };

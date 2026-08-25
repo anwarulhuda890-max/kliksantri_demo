@@ -11,7 +11,8 @@ const activeUnitContext = readFileSync(resolve(root, "src/context/ActiveUnitCont
 const unitWorkspaceSelector = readFileSync(resolve(root, "src/components/UnitWorkspaceSelector.jsx"), "utf8");
 
 assert.match(dashboardPage, /useActiveUnit\(\)/, "DashboardPage must read ActiveUnit context");
-assert.match(dashboardPage, /api\.get\("\/dashboard\/summary", \{ params \}\)/, "Dashboard summary request must send scoped params");
+assert.match(dashboardPage, /api\.get\("\/dashboard\/summary", \{ params, signal: controller\.signal \}\)/, "Specific-unit Dashboard summary request must keep scoped params");
+assert.match(dashboardPage, /api\.get\("\/dashboard\/all-units-v1", \{ params, signal: controller\.signal \}\)/, "All-unit Dashboard must use dedicated V1 aggregate endpoint");
 assert.match(dashboardPage, /activeUnitId,\s*allUnitsAllowed/, "Dashboard effect must depend on workspace changes");
 assert.match(dashboardPage, /!\s*isUnitWorkspace\s*\?/, "Legacy tenant-wide panels must be hidden for unit workspace");
 assert.match(dashboardPage, /error:\s*unitError/, "Dashboard must read ActiveUnit bootstrap errors");
