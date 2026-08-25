@@ -605,6 +605,15 @@
       "notes": "drop only the tenant-agnostic legacy index after verifying the canonical per-unit index exists",
       "recommended_action": "APPLY_ORIGINAL",
       "execution_order": 180
+    },
+    {
+      "filename": "083_attendance_sessions_per_unit.sql",
+      "checksum": "f84a4e24aab8656b052028b01bc81498870a4b19ae2e086c385a71659fb61e95",
+      "status": "NOT_APPLIED",
+      "evidence": "production rollback rehearsal preserves 57 rows/hash and backfills 6 evidence-based sessions",
+      "notes": "canonical per-unit attendance session configuration with stable ID and historical label snapshot",
+      "recommended_action": "APPLY_ORIGINAL",
+      "execution_order": 210
     }
   ]
 }

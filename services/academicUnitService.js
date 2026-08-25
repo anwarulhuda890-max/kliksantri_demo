@@ -151,10 +151,44 @@ async function getGuruInUnit(tenantId, guruId, unitId, client = pool) {
   return rows[0];
 }
 
+async function getAttendanceSessionInUnit(
+  tenantId,
+  sessionId,
+  unitId,
+  { requireActive = true } = {},
+  client = pool,
+) {
+  const parsedSessionId = Number(sessionId);
+  if (!Number.isInteger(parsedSessionId) || parsedSessionId <= 0) {
+    throw academicError("Sesi absensi wajib dipilih", 400, "ATTENDANCE_SESSION_REQUIRED");
+  }
+  const { rows } = await client.query(
+    `SELECT id, tenant_id, unit_id, code, display_name,
+            start_time, end_time, sort_order, active
+     FROM attendance_sessions
+     WHERE tenant_id = $1 AND id = $2
+     LIMIT 1`,
+    [tenantId, parsedSessionId],
+  );
+  const session = rows[0];
+  if (!session || Number(session.unit_id) !== Number(unitId)) {
+    throw academicError(
+      "Sesi absensi tidak berada pada unit aktif",
+      403,
+      "CROSS_UNIT_SESSION",
+    );
+  }
+  if (requireActive && !session.active) {
+    throw academicError("Sesi absensi sudah tidak aktif", 409, "ATTENDANCE_SESSION_INACTIVE");
+  }
+  return session;
+}
+
 module.exports = {
   academicError,
   assertUnitFeature,
   getActiveStudentContext,
+  getAttendanceSessionInUnit,
   getClassInUnit,
   getGuruInUnit,
   getMapelByNameInUnit,

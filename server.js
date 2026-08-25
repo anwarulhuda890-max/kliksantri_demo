@@ -112,6 +112,9 @@ require("./routes/jenisTagihanRoutes");
 const absensiRoutes =
 require("./routes/absensiRoutes");
 
+const attendanceSessionRoutes =
+require("./routes/attendanceSessionRoutes");
+
 const perizinanRoutes =
 require("./routes/perizinanRoutes");
 
@@ -451,6 +454,15 @@ app.use(
   requireUnitFeature("absensi"),
   requirePermission("absensi.view"),
   absensiRoutes
+);
+
+app.use(
+  "/attendance-sessions",
+  authMiddleware,
+  tenantMiddleware,
+  requireUnitFeature("absensi"),
+  requirePermission("absensi.view"),
+  attendanceSessionRoutes
 );
 
 app.use(

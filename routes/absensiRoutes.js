@@ -6,7 +6,10 @@ const {
   isKelasAllowed,
   kelasScopeSql,
 } = require("../middleware/kelasScope");
-const { getActiveStudentContext } = require("../services/academicUnitService");
+const {
+  getActiveStudentContext,
+  getAttendanceSessionInUnit,
+} = require("../services/academicUnitService");
 
 async function loadAccess(req, res) {
   const access = await resolveKelasScopeAccess(req);
@@ -123,10 +126,17 @@ router.get("/", async (req, res) => {
     const bulan = req.query.bulan ? Number(req.query.bulan) : null;
     const tahun = req.query.tahun ? Number(req.query.tahun) : null;
 
-    let query = `SELECT id, santri_id, sesi, status,
+    let query = `SELECT a.id, a.santri_id, a.session_id,
+                     COALESCE(a.session_name_snapshot, a.sesi, configured.display_name) AS sesi,
+                     configured.display_name AS session_current_name,
+                     a.status, a.unit_id, a.kelas_id, a.santri_unit_id, a.enrollment_id,
                      (SELECT kamar FROM santri WHERE id = a.santri_id AND tenant_id = a.tenant_id) AS kamar,
-                  TO_CHAR(tanggal::date, 'YYYY-MM-DD') AS tanggal
+                     TO_CHAR(a.tanggal::date, 'YYYY-MM-DD') AS tanggal
                  FROM absensi a
+                 LEFT JOIN attendance_sessions configured
+                   ON configured.tenant_id = a.tenant_id
+                  AND configured.unit_id = a.unit_id
+                  AND configured.id = a.session_id
                  WHERE a.tenant_id = $1`;
     const params = [req.tenantId];
     let paramIdx = 2;
@@ -157,7 +167,7 @@ router.get("/", async (req, res) => {
     res.json({ success: true, data: result.rows });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 500).json({ success: false, error: err.message, code: err.code });
   }
 });
 
@@ -172,8 +182,15 @@ router.post("/", async (req, res) => {
         error: "Role belum memiliki izin kelola absensi",
       });
     }
+    if (access.mode === "ALL") {
+      return res.status(400).json({
+        success: false,
+        error: "Pilih unit aktif untuk mengisi absensi",
+        code: "UNIT_REQUIRED",
+      });
+    }
 
-    const { santri_id, tanggal, sesi, status } = req.body;
+    const { santri_id, tanggal, session_id, status } = req.body;
 
     if (!status || status === "") {
       return res.status(400).json({
@@ -182,41 +199,55 @@ router.post("/", async (req, res) => {
       });
     }
 
+    const session = await getAttendanceSessionInUnit(
+      req.tenantId,
+      session_id,
+      access.unitId,
+      { requireActive: true },
+    );
     const santriCheck = await assertSantriAllowed(access, santri_id);
     if (!santriCheck.ok) {
       return res.status(santriCheck.status || 400).json({
         success: false,
         error: santriCheck.error,
+        code: santriCheck.code,
       });
     }
 
     const result = await pool.query(
       `INSERT INTO absensi (
-         santri_id, tanggal, sesi, status, tenant_id, unit_id,
-         santri_unit_id, enrollment_id, kelas_id, actor_user_id, source
+         santri_id, tanggal, sesi, session_id, session_name_snapshot, status, tenant_id,
+         unit_id, santri_unit_id, enrollment_id, kelas_id, actor_user_id, source
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'admin')
-       ON CONFLICT (tenant_id, unit_id, santri_id, tanggal, sesi)
-       WHERE unit_id IS NOT NULL
+       VALUES ($1, $2, $3, $4, $3, $5, $6, $7, $8, $9, $10, $11, 'admin')
+       ON CONFLICT (tenant_id, unit_id, santri_id, tanggal, session_id)
+       WHERE unit_id IS NOT NULL AND session_id IS NOT NULL
        DO UPDATE SET status = EXCLUDED.status,
                      santri_unit_id = EXCLUDED.santri_unit_id,
                      enrollment_id = EXCLUDED.enrollment_id,
                      kelas_id = EXCLUDED.kelas_id,
-                     actor_user_id = EXCLUDED.actor_user_id
+                     actor_user_id = EXCLUDED.actor_user_id,
+                     source = EXCLUDED.source
        RETURNING *`,
       [
-        santri_id, tanggal, sesi, status, req.tenantId, access.unitId,
+        santri_id,
+        tanggal,
+        session.display_name,
+        session.id,
+        status,
+        req.tenantId,
+        access.unitId,
         santriCheck.context.santri_unit_id,
         santriCheck.context.enrollment_id,
         santriCheck.context.kelas_id,
-        req.user.id,
+        req.user?.id || null,
       ]
     );
 
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(err.status || 500).json({ success: false, error: err.message, code: err.code });
   }
 });
 
