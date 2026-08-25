@@ -35,6 +35,120 @@ function AkademikResponsiveStyles() {
         max-width: 100%;
       }
 
+      .absensi-session-card-shell,
+      .absensi-session-card-shell > div,
+      .absensi-session-card-shell > div > div,
+      .absensi-session-settings,
+      .absensi-session-row {
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      .absensi-session-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3);
+        min-width: 0;
+      }
+
+      .absensi-session-header__copy {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .absensi-session-header__copy small {
+        display: block;
+        line-height: 1.45;
+        white-space: normal;
+      }
+
+      .absensi-session-settings {
+        display: grid;
+        gap: var(--space-3);
+        margin-top: var(--space-4);
+      }
+
+      .absensi-session-row {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)) auto auto;
+        gap: var(--space-2);
+        align-items: end;
+      }
+
+      .absensi-session-row--new {
+        grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)) auto;
+        border-top: 1px solid var(--border-subtle);
+        padding-top: var(--space-3);
+      }
+
+      .absensi-session-field {
+        display: grid;
+        gap: var(--space-1);
+        min-width: 0;
+      }
+
+      .absensi-session-field > small {
+        color: var(--text-secondary);
+        line-height: 1.3;
+      }
+
+      .absensi-session-field > .form-control-v3 {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      .absensi-session-active {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-width: 0;
+        min-height: 38px;
+      }
+
+      .absensi-session-action {
+        min-width: 0;
+      }
+
+      @media (max-width: 1023px) {
+        .absensi-session-header {
+          align-items: flex-start;
+          flex-wrap: wrap;
+        }
+
+        .absensi-session-row,
+        .absensi-session-row--new {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .absensi-session-field--name {
+          grid-column: 1 / -1;
+        }
+
+        .absensi-session-row:not(.absensi-session-row--new) .absensi-session-action {
+          grid-column: 1 / -1;
+          justify-self: stretch;
+        }
+      }
+
+      @media (max-width: 639px) {
+        .absensi-session-header > .absensi-session-action,
+        .absensi-session-row .absensi-session-action {
+          width: 100%;
+        }
+
+        .absensi-session-row,
+        .absensi-session-row--new {
+          grid-template-columns: minmax(0, 1fr);
+          gap: var(--space-2);
+        }
+
+        .absensi-session-row > * {
+          grid-column: 1;
+        }
+      }
       @media (max-width: 767px) {
         .akademik-filter-panel select,
         .akademik-filter-panel input[type="number"] {
@@ -352,10 +466,10 @@ function AbsensiPage() {
         <div style={errorBannerStyle}>{error}</div>
       ) : null}
       {canManageAbsensi && activeUnitId ? (
-        <div style={{ marginBottom: "var(--space-4)" }}>
+        <div className="absensi-session-card-shell" style={{ marginBottom: "var(--space-4)" }}>
           <Card padding="md" shadow="card" border={false} radius="xl">
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", alignItems: "center" }}>
-              <div>
+            <div className="absensi-session-header">
+              <div className="absensi-session-header__copy">
                 <SectionHeading variant="eyebrow" spacing="first">Sesi Absensi Unit</SectionHeading>
                 <small style={{ color: "var(--text-secondary)" }}>
                   Nama, jam, urutan, dan status berlaku hanya untuk {activeUnit?.nama || "unit aktif"}.
@@ -364,6 +478,7 @@ function AbsensiPage() {
               <Button
                 type="button"
                 variant="outline"
+                className="absensi-session-action"
                 onClick={() => setSessionSettingsOpen((open) => !open)}
               >
                 {sessionSettingsOpen ? "Tutup Pengaturan" : "Atur Sesi"}
@@ -371,19 +486,14 @@ function AbsensiPage() {
             </div>
 
             {sessionSettingsOpen ? (
-              <div style={{ display: "grid", gap: "var(--space-3)", marginTop: "var(--space-4)" }}>
+              <div className="absensi-session-settings">
                 {sessions.map((session) => (
                   <div
                     key={session.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(180px, 2fr) repeat(3, minmax(90px, 1fr)) auto auto",
-                      gap: "var(--space-2)",
-                      alignItems: "end",
-                      opacity: session.active ? 1 : 0.65,
-                    }}
+                    className="absensi-session-row"
+                    style={{ opacity: session.active ? 1 : 0.65 }}
                   >
-                    <label>
+                    <label className="absensi-session-field absensi-session-field--name">
                       <small>Nama sesi</small>
                       <input
                         className="form-control-v3"
@@ -391,7 +501,7 @@ function AbsensiPage() {
                         onChange={(event) => updateSessionDraft(session.id, "display_name", event.target.value)}
                       />
                     </label>
-                    <label>
+                    <label className="absensi-session-field">
                       <small>Mulai</small>
                       <input
                         className="form-control-v3"
@@ -400,7 +510,7 @@ function AbsensiPage() {
                         onChange={(event) => updateSessionDraft(session.id, "start_time", event.target.value)}
                       />
                     </label>
-                    <label>
+                    <label className="absensi-session-field">
                       <small>Selesai</small>
                       <input
                         className="form-control-v3"
@@ -409,7 +519,7 @@ function AbsensiPage() {
                         onChange={(event) => updateSessionDraft(session.id, "end_time", event.target.value)}
                       />
                     </label>
-                    <label>
+                    <label className="absensi-session-field">
                       <small>Urutan</small>
                       <input
                         className="form-control-v3"
@@ -418,7 +528,7 @@ function AbsensiPage() {
                         onChange={(event) => updateSessionDraft(session.id, "sort_order", event.target.value)}
                       />
                     </label>
-                    <label style={{ display: "flex", gap: 6, alignItems: "center", minHeight: 38 }}>
+                    <label className="absensi-session-active">
                       <input
                         type="checkbox"
                         checked={Boolean(session.active)}
@@ -426,18 +536,30 @@ function AbsensiPage() {
                       />
                       Aktif
                     </label>
-                    <Button type="button" size="sm" onClick={() => saveSession(session)} disabled={sessionSaving}>
+                    <Button className="absensi-session-action" type="button" size="sm" onClick={() => saveSession(session)} disabled={sessionSaving}>
                       Simpan
                     </Button>
                   </div>
                 ))}
 
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(180px, 2fr) repeat(3, minmax(90px, 1fr)) auto", gap: "var(--space-2)", alignItems: "end", borderTop: "1px solid var(--border-subtle)", paddingTop: "var(--space-3)" }}>
-                  <input className="form-control-v3" placeholder="Nama sesi baru" value={newSession.display_name} onChange={(event) => setNewSession({ ...newSession, display_name: event.target.value })} />
-                  <input className="form-control-v3" aria-label="Jam mulai sesi baru" type="time" value={newSession.start_time} onChange={(event) => setNewSession({ ...newSession, start_time: event.target.value })} />
-                  <input className="form-control-v3" aria-label="Jam selesai sesi baru" type="time" value={newSession.end_time} onChange={(event) => setNewSession({ ...newSession, end_time: event.target.value })} />
-                  <input className="form-control-v3" aria-label="Urutan sesi baru" type="number" value={newSession.sort_order} onChange={(event) => setNewSession({ ...newSession, sort_order: event.target.value })} />
-                  <Button type="button" size="sm" onClick={createSession} disabled={sessionSaving || !newSession.display_name.trim()}>
+                <div className="absensi-session-row absensi-session-row--new">
+                  <label className="absensi-session-field absensi-session-field--name">
+                    <small>Nama sesi baru</small>
+                    <input className="form-control-v3" placeholder="Nama sesi baru" value={newSession.display_name} onChange={(event) => setNewSession({ ...newSession, display_name: event.target.value })} />
+                  </label>
+                  <label className="absensi-session-field">
+                    <small>Jam mulai</small>
+                    <input className="form-control-v3" aria-label="Jam mulai sesi baru" type="time" value={newSession.start_time} onChange={(event) => setNewSession({ ...newSession, start_time: event.target.value })} />
+                  </label>
+                  <label className="absensi-session-field">
+                    <small>Jam selesai</small>
+                    <input className="form-control-v3" aria-label="Jam selesai sesi baru" type="time" value={newSession.end_time} onChange={(event) => setNewSession({ ...newSession, end_time: event.target.value })} />
+                  </label>
+                  <label className="absensi-session-field">
+                    <small>Urutan</small>
+                    <input className="form-control-v3" aria-label="Urutan sesi baru" type="number" value={newSession.sort_order} onChange={(event) => setNewSession({ ...newSession, sort_order: event.target.value })} />
+                  </label>
+                  <Button className="absensi-session-action" type="button" size="sm" onClick={createSession} disabled={sessionSaving || !newSession.display_name.trim()}>
                     Tambah Sesi
                   </Button>
                 </div>
@@ -449,7 +571,6 @@ function AbsensiPage() {
           </Card>
         </div>
       ) : null}
-
       <Card padding="md" shadow="card" border={false} radius="xl">
         <div className="akademik-filter-panel ops-page__filter filter-bar-v3 filter-bar-v3--table">
           <span className="filter-bar-v3__label">Filter absensi</span>
