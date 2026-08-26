@@ -97,6 +97,9 @@ const kelasRoutes =
 const dashboardRoutes =
 require("./routes/dashboardRoutes");
 
+const dashboardSpecificUnitRoutes =
+require("./routes/dashboardSpecificUnitRoutes");
+
 const unitRoutes =
 require("./routes/unitRoutes");
 
@@ -419,6 +422,14 @@ app.use(
   tenantMiddleware,
   requirePermission("dashboard.view"),
   dashboardRoutes
+);
+
+app.use(
+  "/dashboard-specific-unit",
+  authMiddleware,
+  tenantMiddleware,
+  requirePermission("dashboard.view"),
+  dashboardSpecificUnitRoutes
 );
 
 app.use("/units", unitRoutes);

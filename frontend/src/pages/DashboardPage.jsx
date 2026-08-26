@@ -5,6 +5,7 @@ import { DashboardResponsiveStyles } from "../components/dashboard/DashboardResp
 import DashboardMetrics from "../components/dashboard/DashboardMetrics";
 import DashboardHero from "../components/dashboard/DashboardHero";
 import DashboardAllUnitsV1 from "../components/dashboard/DashboardAllUnitsV1";
+import DashboardSpecificUnit from "../components/dashboard/DashboardSpecificUnit";
 import DashboardKeuangan from "../components/dashboard/DashboardKeuangan";
 import DashboardPendidikan from "../components/dashboard/DashboardPendidikan";
 import DashboardKeamanan from "../components/dashboard/DashboardKeamanan";
@@ -89,6 +90,7 @@ function DashboardPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
   const [allUnitsYear, setAllUnitsYear] = useState(() => new Date().getFullYear());
+  const [specificClassSelection, setSpecificClassSelection] = useState({ unitId: null, classId: "" });
   const summaryRequestRef = useRef({ sequence: 0, controller: null });
 
   const role = user?.role || "";
@@ -96,6 +98,9 @@ function DashboardPage() {
   const shortcuts = DEFAULT_SHORTCUTS.filter((item) => hasPermission(item.permission));
 
   const isUnitWorkspace = Boolean(activeUnitId);
+  const specificClassId = Number(specificClassSelection.unitId) === Number(activeUnitId)
+    ? specificClassSelection.classId
+    : "";
   const dashboardScopeReady = !unitLoading && !unitError && (allUnitsAllowed || isUnitWorkspace);
   const dashboardBlockedMessage = unitError ||
     (!unitLoading && !allUnitsAllowed && !isUnitWorkspace
@@ -124,10 +129,10 @@ function DashboardPage() {
       setSummaryLoading(true);
       setSummaryError("");
       const params = activeUnitId
-        ? { unit_id: activeUnitId }
+        ? { unit_id: activeUnitId, ...(specificClassId ? { kelas_id: specificClassId } : {}) }
         : { scope: "all", year: allUnitsYear };
       const response = activeUnitId
-        ? await api.get("/dashboard/summary", { params, signal: controller.signal })
+        ? await api.get("/dashboard-specific-unit/summary", { params, signal: controller.signal })
         : await api.get("/dashboard/all-units-v1", { params, signal: controller.signal });
       if (summaryRequestRef.current.sequence !== sequence) return;
       setSummary(response.data.data);
@@ -145,7 +150,7 @@ function DashboardPage() {
     } finally {
       if (summaryRequestRef.current.sequence === sequence) setSummaryLoading(false);
     }
-  }, [activeUnitId, allUnitsAllowed, allUnitsYear]);
+  }, [activeUnitId, allUnitsAllowed, allUnitsYear, specificClassId]);
 
   useEffect(() => {
     if (canViewDashboardData && dashboardScopeReady) {
@@ -167,7 +172,7 @@ function DashboardPage() {
           <DashboardHero unitContext={unitContext} />
         </section>
 
-        {canViewDashboardData && dashboardScopeReady ? (
+        {canViewDashboardData && dashboardScopeReady && !isUnitWorkspace ? (
           <section className="dashboard-section">
             <div style={contextPanelStyle}>
               <strong>
@@ -222,12 +227,16 @@ function DashboardPage() {
           </section>
         ) : null}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "superadmin" && (
-          isUnitWorkspace ? (
-            <section className="dashboard-section dashboard-section--metrics">
-              <DashboardMetrics summary={summaryForView} meta={{ scope: "unit" }} />
-            </section>
-          ) : (
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && isUnitWorkspace ? (
+          <section className="dashboard-section">
+            <DashboardSpecificUnit
+              data={summaryForView}
+              onClassChange={(classId) => setSpecificClassSelection({ unitId: activeUnitId, classId })}
+            />
+          </section>
+        ) : null}
+
+        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "superadmin" && !isUnitWorkspace && (
             <section className="dashboard-section">
               <DashboardAllUnitsV1
                 data={summaryForView}
@@ -235,18 +244,17 @@ function DashboardPage() {
                 onYearChange={setAllUnitsYear}
               />
             </section>
-          )
         )}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "keuangan" && <DashboardKeuangan summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !isUnitWorkspace && !summaryLoading && !summaryError && role === "keuangan" && <DashboardKeuangan summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "pendidikan" && <DashboardPendidikan summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !isUnitWorkspace && !summaryLoading && !summaryError && role === "pendidikan" && <DashboardPendidikan summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "keamanan" && <DashboardKeamanan summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !isUnitWorkspace && !summaryLoading && !summaryError && role === "keamanan" && <DashboardKeamanan summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && role === "sekretaris" && <DashboardSekretaris summary={summaryForView} />}
+        {canViewDashboardData && dashboardScopeReady && !isUnitWorkspace && !summaryLoading && !summaryError && role === "sekretaris" && <DashboardSekretaris summary={summaryForView} />}
 
-        {canViewDashboardData && dashboardScopeReady && !summaryLoading && !summaryError && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
+        {canViewDashboardData && dashboardScopeReady && !isUnitWorkspace && !summaryLoading && !summaryError && !["superadmin", "keuangan", "pendidikan", "keamanan", "sekretaris"].includes(role) && (
           <section className="dashboard-section dashboard-section--metrics">
             <DashboardMetrics summary={summaryForView} meta={isUnitWorkspace ? { scope: "unit" } : summaryMeta} />
           </section>
