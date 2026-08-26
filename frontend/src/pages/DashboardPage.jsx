@@ -168,9 +168,11 @@ function DashboardPage() {
     <AppShell title="Dashboard" breadcrumb="Dashboard">
       <DashboardResponsiveStyles />
       <div className="dashboard-page dashboard-monitoring-v3">
-        <section className="dashboard-section dashboard-section--hero">
-          <DashboardHero unitContext={unitContext} />
-        </section>
+        {!isUnitWorkspace ? (
+          <section className="dashboard-section dashboard-section--hero">
+            <DashboardHero unitContext={unitContext} />
+          </section>
+        ) : null}
 
         {canViewDashboardData && dashboardScopeReady && !isUnitWorkspace ? (
           <section className="dashboard-section">
