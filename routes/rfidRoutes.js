@@ -42,6 +42,8 @@ router.post("/payment", deviceAuthMiddleware, requireTenantFeature("rfid"), rfid
 
 router.get("/transactions", ...adminWalletView, rfidController.getTransactions);
 router.get("/transactions/export", ...adminWalletView, rfidController.exportTransactions);
+router.patch("/transactions/:id", ...adminWalletManage, walletController.editManualTopup);
+router.delete("/transactions/:id", ...adminWalletManage, walletController.deleteManualTopup);
 router.get("/santri/search", ...adminWalletView, rfidController.searchSantri);
 
 router.post("/topup", ...adminWalletManage, rfidController.topupSaldo);

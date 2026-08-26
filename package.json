@@ -31,7 +31,9 @@
     "test:guru-unit-scope": "node scripts/test-guru-unit-scope.js",
     "migration:083:preflight": "node scripts/preflight-migration-083.js",
     "migration:083:rehearse": "node scripts/rehearse-migration-083-clone.js",
-    "migration:083:production": "node scripts/run-migration-083-production.js"
+    "migration:083:production": "node scripts/run-migration-083-production.js",
+    "migration:085:production": "node scripts/run-migration-085-production.js",
+    "test:wallet-corrections": "node scripts/rehearse-wallet-transaction-corrections.js"
   },
   "keywords": [],
   "author": "",

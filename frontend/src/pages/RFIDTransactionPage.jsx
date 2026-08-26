@@ -8,16 +8,25 @@ import TableToolbar from "../components/ui/TableToolbar";
 import SearchInput from "../components/ui/SearchInput";
 import EmptyState from "../components/ui/EmptyState";
 import StatusBadge from "../components/ui/StatusBadge";
+import Modal from "../components/Modal";
+import TableActions from "../components/ui/table/TableActions";
 import {
   Table,
   TableScroll,
   TablePagination,
 } from "../components/ui/table";
-import { FilterBar, FormField, Input, Select } from "../components/ui/form";
+import { FilterBar, FormActionBar, FormField, Input, Select, Textarea } from "../components/ui/form";
 import { DEFAULT_PAGE_SIZE } from "../hooks/useClientPagination";
 import { inferTransactionMethod, transactionMethodLabel } from "../constants/wallet";
 import { useActiveUnit } from "../context/ActiveUnitContext";
 import { buildUnitScopeParams } from "../utils/unitScopeParams";
+import { hasAnyPermission } from "../utils/hasPermission";
+
+function formatCurrency(value) {
+  const amount = Number(value || 0);
+  const sign = amount > 0 ? "+" : amount < 0 ? "-" : "";
+  return `${sign}Rp ${Math.abs(amount).toLocaleString("id-ID")}`;
+}
 
 function trxTypeLabel(trxType) {
   if (trxType === "payment") return "PEMBAYARAN";
@@ -67,6 +76,11 @@ function RFIDTransactionPage() {
   const [startDate, setStartDate] = useState(defaultRange.start_date);
   const [endDate, setEndDate] = useState(defaultRange.end_date);
   const [filterType, setFilterType] = useState("");
+  const [correction, setCorrection] = useState(null);
+  const [newNominal, setNewNominal] = useState("");
+  const [reason, setReason] = useState("");
+  const [isCorrecting, setIsCorrecting] = useState(false);
+  const canManageWallet = hasAnyPermission(["wallet.manage", "rfid.manage"]);
 
   const searchDebounceRef = useRef(null);
 
@@ -135,6 +149,73 @@ function RFIDTransactionPage() {
     Object.entries(scopeParams).forEach(([key, value]) => params.set(key, value));
 
     return `${API_BASE_URL}/rfid/transactions/export?${params.toString()}`;
+  };
+
+  const openCorrection = (mode, trx) => {
+    setCorrection({ mode, trx });
+    setNewNominal(mode === "edit" ? String(trx.nominal) : "");
+    setReason("");
+  };
+
+  const closeCorrection = () => {
+    if (isCorrecting) return;
+    setCorrection(null);
+    setNewNominal("");
+    setReason("");
+  };
+
+  const correctionDelta = correction?.mode === "delete"
+    ? -Number(correction?.trx?.nominal || 0)
+    : Number(newNominal || 0) - Number(correction?.trx?.nominal || 0);
+
+  const submitCorrection = async () => {
+    if (!correction) return;
+    const normalizedReason = reason.trim();
+    if (normalizedReason.length < 5) {
+      alert("Alasan wajib diisi minimal 5 karakter.");
+      return;
+    }
+    if (
+      correction.mode === "edit"
+      && (!Number.isSafeInteger(Number(newNominal)) || Number(newNominal) <= 0)
+    ) {
+      alert("Nominal baru harus berupa rupiah bulat dan lebih dari 0.");
+      return;
+    }
+
+    setIsCorrecting(true);
+    const idempotencyKey = crypto.randomUUID();
+    try {
+      if (correction.mode === "edit") {
+        await api.patch(
+          `/rfid/transactions/${correction.trx.id}`,
+          {
+            nominal: Number(newNominal),
+            reason: normalizedReason,
+            idempotency_key: idempotencyKey,
+          },
+          { params: scopeParams, headers: { "Idempotency-Key": idempotencyKey } },
+        );
+      } else {
+        await api.delete(`/rfid/transactions/${correction.trx.id}`, {
+          params: scopeParams,
+          headers: { "Idempotency-Key": idempotencyKey },
+          data: { reason: normalizedReason, idempotency_key: idempotencyKey },
+        });
+      }
+      const successMessage = correction.mode === "edit"
+        ? "Transaksi dan saldo dompet berhasil dikoreksi."
+        : "Transaksi dihapus dari mutasi dan saldo dompet berhasil dikoreksi.";
+      setCorrection(null);
+      setNewNominal("");
+      setReason("");
+      await fetchTransactions(page);
+      alert(successMessage);
+    } catch (err) {
+      alert(getApiError(err, "Koreksi transaksi gagal"));
+    } finally {
+      setIsCorrecting(false);
+    }
   };
 
   return (
@@ -223,6 +304,7 @@ function RFIDTransactionPage() {
                     <th>Saldo Awal</th>
                     <th>Saldo Akhir</th>
                     <th>Sync</th>
+                    {canManageWallet && activeUnitId ? <th>Aksi</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -250,6 +332,26 @@ function RFIDTransactionPage() {
                       <td>
                         <StatusBadge status={trx.sync_status} />
                       </td>
+                      {canManageWallet && activeUnitId ? (
+                        <td>
+                          <TableActions
+                            items={[
+                              {
+                                type: "edit",
+                                title: "Edit topup manual",
+                                hidden: !trx.correction_eligible,
+                                onClick: () => openCorrection("edit", trx),
+                              },
+                              {
+                                type: "delete",
+                                title: "Hapus topup manual",
+                                hidden: !trx.correction_eligible,
+                                onClick: () => openCorrection("delete", trx),
+                              },
+                            ]}
+                          />
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -264,6 +366,84 @@ function RFIDTransactionPage() {
           </>
         )}
       </DataTableCard>
+
+      <Modal
+        open={Boolean(correction)}
+        title={correction?.mode === "edit" ? "Edit transaksi dompet" : "Hapus transaksi dompet?"}
+        onClose={closeCorrection}
+        width={520}
+      >
+        {correction ? (
+          <div style={{ display: "grid", gap: "var(--space-4)", minWidth: 0 }}>
+            <div className="form-modal-summary-v3">
+              <p><strong>Santri:</strong> {correction.trx.nama_santri || "—"}</p>
+              <p><strong>Jenis:</strong> {trxTypeLabel(correction.trx.trx_type)}</p>
+              <p><strong>Nominal:</strong> Rp {Number(correction.trx.nominal).toLocaleString("id-ID")}</p>
+              <p>
+                <strong>Tanggal:</strong>{" "}
+                {new Date(correction.trx.created_at).toLocaleString("id-ID")}
+              </p>
+            </div>
+
+            {correction.mode === "edit" ? (
+              <FormField label="Nominal baru" htmlFor="wallet-edit-nominal">
+                <Input
+                  id="wallet-edit-nominal"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={newNominal}
+                  onChange={(event) => setNewNominal(event.target.value)}
+                />
+              </FormField>
+            ) : (
+              <p style={{
+                margin: 0,
+                padding: "12px",
+                borderRadius: "var(--radius-sm)",
+                background: "var(--danger-subtle, rgba(220, 38, 38, 0.08))",
+                color: "var(--text-primary)",
+                lineHeight: 1.5,
+              }}>
+                Transaksi akan dihapus dari mutasi dan saldo dompet akan dikoreksi.
+              </p>
+            )}
+
+            <div style={{
+              padding: "12px",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-sm)",
+              overflowWrap: "anywhere",
+            }}>
+              <strong>Perubahan saldo: {formatCurrency(correctionDelta)}</strong>
+            </div>
+
+            <FormField label="Alasan koreksi" htmlFor="wallet-correction-reason">
+              <Textarea
+                id="wallet-correction-reason"
+                rows={3}
+                maxLength={500}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Contoh: Topup tercatat dua kali"
+              />
+            </FormField>
+
+            <FormActionBar>
+              <Button
+                variant={correction.mode === "delete" ? "danger" : "primary"}
+                loading={isCorrecting}
+                onClick={submitCorrection}
+              >
+                {correction.mode === "delete" ? "Hapus Transaksi" : "Simpan Perubahan"}
+              </Button>
+              <Button variant="outline" disabled={isCorrecting} onClick={closeCorrection}>
+                Batal
+              </Button>
+            </FormActionBar>
+          </div>
+        ) : null}
+      </Modal>
     </AppShell>
   );
 }

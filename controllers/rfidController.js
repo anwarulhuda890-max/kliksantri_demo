@@ -774,9 +774,48 @@ async(req,res)=>{
         NULL::bigint AS saldo_awal,
         wt.balance_after,
         wt.balance_after AS saldo_akhir,
-        wt.reference_id AS trx_id,
-        wt.source,
-        wt.merchant_id,
+         wt.reference_id AS trx_id,
+         wt.source,
+         wt.reference_type,
+         CASE WHEN
+           LOWER(TRIM(wt.type)) = 'topup'
+           AND LOWER(TRIM(wt.direction)) = 'credit'
+           AND LOWER(TRIM(wt.source)) = 'admin'
+           AND LOWER(TRIM(COALESCE(wt.reference_type, ''))) = 'manual_topup'
+           AND wt.reference_id IS NOT NULL
+           AND wt.merchant_id IS NULL
+           AND wt.device_id IS NULL
+           AND tx.id IS NOT NULL
+           AND tx.santri_id = wt.santri_id
+           AND tx.nominal = wt.amount
+           AND UPPER(TRIM(COALESCE(tx.jenis, ''))) = 'TOPUP RFID'
+           AND NOT EXISTS (
+             SELECT 1 FROM transaksi_rfid linked_rfid
+             WHERE linked_rfid.tenant_id = wt.tenant_id
+               AND (
+                 linked_rfid.trx_id = wt.reference_id
+                 OR linked_rfid.trx_id = 'REFUND-OF-' || wt.reference_id
+               )
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM wallet_transactions child
+             WHERE child.tenant_id = wt.tenant_id
+               AND child.id <> wt.id
+               AND (
+                 child.reference_id = wt.id::text
+                 OR child.reference_id = wt.idempotency_key
+                 OR (
+                   child.reference_id = wt.reference_id
+                   AND NOT (
+                     LOWER(TRIM(child.type)) = 'topup'
+                     AND LOWER(TRIM(child.source)) = 'admin'
+                     AND LOWER(TRIM(COALESCE(child.reference_type, ''))) = 'manual_topup'
+                   )
+                 )
+               )
+           )
+         THEN TRUE ELSE FALSE END AS correction_eligible,
+         wt.merchant_id,
         wt.device_id,
         'synced'::text AS sync_status,
         s.nama AS nama_santri,

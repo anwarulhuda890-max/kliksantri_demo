@@ -5,6 +5,10 @@ const {
   resolveWalletAccess,
   sendUnitError,
 } = require("../services/walletUnitService");
+const {
+  deleteManualTopup,
+  editManualTopup,
+} = require("../services/walletTransactionCorrectionService");
 
 function isSantriAktif(status) {
   const normalized = String(status ?? "aktif").trim().toLowerCase();
@@ -137,3 +141,31 @@ exports.withdrawSaldo = async (req, res) => {
     client.release();
   }
 };
+
+async function runCorrection(req, res, action) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const input = {
+      client,
+      req,
+      transactionId: req.params.id,
+      reason: req.body?.reason,
+      requestId: req.get("Idempotency-Key") || req.body?.idempotency_key,
+    };
+    const result = action === "edit"
+      ? await editManualTopup({ ...input, nominal: req.body?.nominal })
+      : await deleteManualTopup(input);
+    await client.query("COMMIT");
+    return res.json(result);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(`[wallet.${action}ManualTopup]`, error);
+    return sendUnitError(res, error, "Koreksi transaksi dompet gagal");
+  } finally {
+    client.release();
+  }
+}
+
+exports.editManualTopup = async (req, res) => runCorrection(req, res, "edit");
+exports.deleteManualTopup = async (req, res) => runCorrection(req, res, "delete");
