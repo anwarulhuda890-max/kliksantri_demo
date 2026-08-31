@@ -58,6 +58,32 @@ function cashDeltaSql(alias = "") {
   return `CASE WHEN ${prefix}jenis = 'Masuk' THEN ${prefix}nominal ELSE -${prefix}nominal END`;
 }
 
+async function getUnitCashRunningBalance(client, { tenantId, unitId, asOf = null }) {
+  const normalizedTenantId = Number(tenantId);
+  const normalizedUnitId = Number(unitId);
+  if (!Number.isInteger(normalizedTenantId) || normalizedTenantId <= 0
+      || !Number.isInteger(normalizedUnitId) || normalizedUnitId <= 0) {
+    throw accessError("Tenant atau unit Buku Kas tidak valid", 400, "INVALID_UNIT");
+  }
+  const { rows } = await client.query(
+    `/* canonical_unit_cash_running_balance */
+     SELECT
+       COALESCE(SUM(nominal) FILTER (WHERE jenis = 'Masuk'), 0)::bigint AS pemasukan,
+       COALESCE(SUM(nominal) FILTER (WHERE jenis = 'Keluar'), 0)::bigint AS pengeluaran,
+       COALESCE(SUM(${cashDeltaSql()}), 0)::bigint AS saldo
+     FROM buku_kas
+     WHERE tenant_id = $1
+       AND unit_id = $2
+       AND tanggal < (COALESCE($3::date, CURRENT_DATE) + INTERVAL '1 day')`,
+    [normalizedTenantId, normalizedUnitId, asOf],
+  );
+  return {
+    pemasukan: Number(rows[0]?.pemasukan || 0),
+    pengeluaran: Number(rows[0]?.pengeluaran || 0),
+    saldo: Number(rows[0]?.saldo || 0),
+  };
+}
+
 async function listBukuKas(req, client = pool) {
   const access = await resolveActiveUnit(req, client);
   const { bulan, tahun } = buildPeriod(req.query);
@@ -101,6 +127,13 @@ async function listBukuKas(req, client = pool) {
      WHERE ${where}`,
     params,
   );
+  const periodSummary = summaryRows[0] || {};
+  const runningSummary = access.mode === "UNIT"
+    ? await getUnitCashRunningBalance(client, {
+      tenantId: access.tenantId,
+      unitId: access.unitId,
+    })
+    : null;
 
   return {
     meta: {
@@ -111,9 +144,11 @@ async function listBukuKas(req, client = pool) {
       periode: { bulan, tahun },
     },
     summary: {
-      pemasukan: Number(summaryRows[0]?.pemasukan || 0),
-      pengeluaran: Number(summaryRows[0]?.pengeluaran || 0),
-      saldo: Number(summaryRows[0]?.saldo || 0),
+      pemasukan: Number(periodSummary.pemasukan || 0),
+      pengeluaran: Number(periodSummary.pengeluaran || 0),
+      saldo_periode: Number(periodSummary.saldo || 0),
+      saldo: runningSummary?.saldo ?? Number(periodSummary.saldo || 0),
+      saldo_berjalan: runningSummary?.saldo ?? Number(periodSummary.saldo || 0),
       jumlah_transaksi: rows.length,
     },
     data: rows,
@@ -452,6 +487,7 @@ module.exports = {
   deleteBukuKas,
   handleServiceError,
   getFoundationAccount,
+  getUnitCashRunningBalance,
   listBukuKas,
   listFoundationCash,
   writeBukuKas,

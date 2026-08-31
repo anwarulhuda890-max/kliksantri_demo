@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
 import Card from "../components/ui/Card";
@@ -43,18 +43,44 @@ function BukuKasPage() {
     petugas: "",
   });
   const [message, setMessage] = useState("");
+  const [summary, setSummary] = useState({
+    pemasukan: 0,
+    pengeluaran: 0,
+    saldo: 0,
+    saldo_periode: 0,
+    jumlah_transaksi: 0,
+  });
+  const dataRequestRef = useRef({ sequence: 0, controller: null });
 
   const readScopeParams = useMemo(
     () => buildUnitScopeParams({ activeUnitId, allUnitsAllowed }),
     [activeUnitId, allUnitsAllowed],
   );
 
-  const getData = async () => {
-    const response = await api.get("/buku-kas", {
-      params: readScopeParams,
-    });
-    setData(response.data.data);
-  };
+  const getData = useCallback(async () => {
+    dataRequestRef.current.controller?.abort();
+    const controller = new AbortController();
+    const sequence = dataRequestRef.current.sequence + 1;
+    dataRequestRef.current = { sequence, controller };
+    try {
+      const response = await api.get("/buku-kas", {
+        params: { ...readScopeParams, bulan, tahun },
+        signal: controller.signal,
+      });
+      if (dataRequestRef.current.sequence !== sequence) return;
+      setData(response.data.data);
+      setSummary(response.data.summary || {
+        pemasukan: 0,
+        pengeluaran: 0,
+        saldo: 0,
+        saldo_periode: 0,
+        jumlah_transaksi: 0,
+      });
+    } catch (error) {
+      if (controller.signal.aborted || dataRequestRef.current.sequence !== sequence) return;
+      throw error;
+    }
+  }, [readScopeParams, bulan, tahun]);
 
   const simpan = async () => {
     try {
@@ -119,24 +145,21 @@ function BukuKasPage() {
   };
 
   useEffect(() => {
-    getData();
-  }, [readScopeParams]);
+    const timer = setTimeout(() => {
+      getData().catch((error) => {
+        console.error(error);
+        setMessage(error.response?.data?.error || "Gagal memuat Buku Kas");
+      });
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      dataRequestRef.current.controller?.abort();
+    };
+  }, [getData]);
 
-  const dataTahunan = data.filter(
-    (d) => Number(String(d.tanggal).split("-")[0]) === tahun,
-  );
-
-  const dataBulanan = dataTahunan.filter(
-    (d) => Number(String(d.tanggal).split("-")[1]) === bulan,
-  );
-
-  const totalMasuk = dataBulanan
-    .filter((d) => d.jenis === "Masuk")
-    .reduce((sum, d) => sum + Number(d.nominal), 0);
-
-  const totalKeluar = dataBulanan
-    .filter((d) => d.jenis === "Keluar")
-    .reduce((sum, d) => sum + Number(d.nominal), 0);
+  const dataBulanan = data;
+  const totalMasuk = Number(summary.pemasukan || 0);
+  const totalKeluar = Number(summary.pengeluaran || 0);
 
   const filtered = dataBulanan.filter(
     (d) =>
@@ -151,7 +174,7 @@ function BukuKasPage() {
     setPage(1);
   }, [search, bulan, tahun, setPage]);
 
-  const saldoKas = totalMasuk - totalKeluar;
+  const saldoKas = Number(summary.saldo || 0);
   const jumlahTransaksi = filtered.length;
 
   const handleExport = () => {
@@ -227,7 +250,7 @@ function BukuKasPage() {
             value={formatCurrency(totalKeluar)}
             accent="danger"
           />
-          <KpiCard label="Saldo" value={formatCurrency(saldoKas)} accent="primary" />
+          <KpiCard label="Saldo Berjalan" value={formatCurrency(saldoKas)} accent="primary" />
           <KpiCard label="Jumlah Transaksi" value={formatNumber(jumlahTransaksi)} accent="neutral" />
         </KpiGrid>
       </div>

@@ -1,5 +1,6 @@
 const { getEffectiveUnitFeatures } = require("./unitFeatureService");
 const { isFeatureEnabled } = require("./tenantFeatureService");
+const { getUnitCashRunningBalance } = require("./financeCashService");
 
 function normalizeYear(value, currentYear = new Date().getFullYear()) {
   if (value == null || value === "") return currentYear;
@@ -63,8 +64,7 @@ async function getDashboardSpecificUnit(client, { tenantId, unitId, kelasId, yea
       SELECT COUNT(*) FILTER (WHERE LOWER(TRIM(COALESCE(status_kesehatan,'')))='sakit')::int AS sick FROM latest`, params),
     client.query(`SELECT COUNT(DISTINCT santri_id)::int AS permitted FROM perizinan
       WHERE tenant_id=$1 AND unit_id=$2 AND LOWER(TRIM(COALESCE(status,'')))='keluar'`, params),
-    client.query(`SELECT COALESCE(SUM(CASE WHEN jenis='Masuk' THEN nominal ELSE -nominal END),0)::bigint AS balance
-      FROM buku_kas WHERE tenant_id=$1 AND unit_id=$2`, params),
+    getUnitCashRunningBalance(client, { tenantId, unitId }),
     client.query(`/* dashboard_specific_unit:monthly_cash */ WITH months AS (SELECT generate_series(1,12)::int AS month), ledger AS (
       SELECT tanggal,CASE WHEN jenis='Masuk' THEN nominal ELSE -nominal END AS delta FROM buku_kas WHERE tenant_id=$1 AND unit_id=$2)
       SELECT m.month,CASE WHEN make_date($3::int,m.month,1)>date_trunc('month',CURRENT_DATE)::date THEN NULL
@@ -110,7 +110,7 @@ async function getDashboardSpecificUnit(client, { tenantId, unitId, kelasId, yea
   }
 
   const countRow = counts.rows[0] || {};
-  const cashBalance = num(cash.rows[0]?.balance);
+  const cashBalance = num(cash.saldo);
   const walletBalance = eligibility.wallet ? num(wallet.rows[0]?.balance) : null;
   const visibleCashBalance = eligibility.cash ? cashBalance : null;
   const sahriyahRow = sahriyah.rows[0] || {};
