@@ -53,6 +53,31 @@ function buildPeriod(query = {}) {
   };
 }
 
+function toDateString(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function buildBukuKasPeriod(query = {}) {
+  const tahun = parsePositiveInt(query.tahun, new Date().getFullYear());
+  const annual = String(query.bulan || "").toLowerCase() === "all"
+    || String(query.periode || "").toLowerCase() === "annual";
+  const parsedMonth = parsePositiveInt(query.bulan, new Date().getMonth() + 1);
+  const bulan = annual ? null : Math.min(parsedMonth, 12);
+  const start = bulan
+    ? new Date(Date.UTC(tahun, bulan - 1, 1))
+    : new Date(Date.UTC(tahun, 0, 1));
+  const end = bulan
+    ? new Date(Date.UTC(tahun, bulan, 1))
+    : new Date(Date.UTC(tahun + 1, 0, 1));
+  return {
+    bulan,
+    tahun,
+    mode: annual ? "annual" : "monthly",
+    startDate: toDateString(start),
+    endDate: toDateString(end),
+  };
+}
+
 function cashDeltaSql(alias = "") {
   const prefix = alias ? `${alias}.` : "";
   return `CASE WHEN ${prefix}jenis = 'Masuk' THEN ${prefix}nominal ELSE -${prefix}nominal END`;
@@ -86,11 +111,14 @@ async function getUnitCashRunningBalance(client, { tenantId, unitId, asOf = null
 
 async function listBukuKas(req, client = pool) {
   const access = await resolveActiveUnit(req, client);
-  const { bulan, tahun } = buildPeriod(req.query);
+  const period = buildBukuKasPeriod(req.query);
+  const { bulan, tahun, startDate, endDate } = period;
   const search = String(req.query.q || req.query.search || "").trim();
 
-  const params = [access.tenantId, bulan, tahun];
-  let where = `bk.tenant_id = $1 AND EXTRACT(MONTH FROM bk.tanggal) = $2 AND EXTRACT(YEAR FROM bk.tanggal) = $3`;
+  const params = [access.tenantId, startDate, endDate];
+  let where = `bk.tenant_id = $1
+    AND bk.tanggal >= $2::date
+    AND bk.tanggal < LEAST($3::date, CURRENT_DATE + 1)`;
   if (access.mode === "UNIT") {
     params.push(access.unitId);
     where += ` AND bk.unit_id = $${params.length}`;
@@ -117,17 +145,44 @@ async function listBukuKas(req, client = pool) {
     params,
   );
 
+  const summaryParams = [access.tenantId, startDate, endDate];
+  let summaryScope = "tenant_id = $1";
+  if (access.mode === "UNIT") {
+    summaryParams.push(access.unitId);
+    summaryScope += ` AND unit_id = $${summaryParams.length}`;
+  }
   const { rows: summaryRows } = await client.query(
     `SELECT
-       COALESCE(SUM(nominal) FILTER (WHERE jenis = 'Masuk'), 0)::bigint AS pemasukan,
-       COALESCE(SUM(nominal) FILTER (WHERE jenis = 'Keluar'), 0)::bigint AS pengeluaran,
-       COALESCE(SUM(${cashDeltaSql()}), 0)::bigint AS saldo
-     FROM buku_kas bk
-     JOIN unit_pendidikan u ON u.id = bk.unit_id AND u.tenant_id = bk.tenant_id
-     WHERE ${where}`,
-    params,
+       COALESCE(SUM(${cashDeltaSql()}) FILTER (
+         WHERE tanggal < LEAST($2::date, CURRENT_DATE + 1)
+       ), 0)::bigint AS saldo_awal,
+       COALESCE(SUM(nominal) FILTER (
+         WHERE jenis = 'Masuk'
+           AND tanggal >= $2::date
+           AND tanggal < LEAST($3::date, CURRENT_DATE + 1)
+       ), 0)::bigint AS pemasukan,
+       COALESCE(SUM(nominal) FILTER (
+         WHERE jenis = 'Keluar'
+           AND tanggal >= $2::date
+           AND tanggal < LEAST($3::date, CURRENT_DATE + 1)
+       ), 0)::bigint AS pengeluaran,
+       COALESCE(SUM(${cashDeltaSql()}) FILTER (
+         WHERE tanggal >= $2::date
+           AND tanggal < LEAST($3::date, CURRENT_DATE + 1)
+       ), 0)::bigint AS period_net,
+       COUNT(*) FILTER (
+         WHERE tanggal >= $2::date
+           AND tanggal < LEAST($3::date, CURRENT_DATE + 1)
+       )::int AS jumlah_transaksi
+     FROM buku_kas
+     WHERE ${summaryScope}
+       AND tanggal < LEAST($3::date, CURRENT_DATE + 1)`,
+    summaryParams,
   );
   const periodSummary = summaryRows[0] || {};
+  const saldoAwal = Number(periodSummary.saldo_awal || 0);
+  const periodNet = Number(periodSummary.period_net || 0);
+  const saldoAkhirPeriode = saldoAwal + periodNet;
   const runningSummary = access.mode === "UNIT"
     ? await getUnitCashRunningBalance(client, {
       tenantId: access.tenantId,
@@ -141,15 +196,25 @@ async function listBukuKas(req, client = pool) {
       unit_id: access.mode === "UNIT" ? access.unitId : null,
       unit_name: access.unit?.nama || null,
       read_only: access.mode !== "UNIT",
-      periode: { bulan, tahun },
+      periode: {
+        bulan,
+        tahun,
+        mode: period.mode,
+        start_date: startDate,
+        end_date_exclusive: endDate,
+      },
     },
     summary: {
+      saldo_awal: saldoAwal,
       pemasukan: Number(periodSummary.pemasukan || 0),
       pengeluaran: Number(periodSummary.pengeluaran || 0),
-      saldo_periode: Number(periodSummary.saldo || 0),
-      saldo: runningSummary?.saldo ?? Number(periodSummary.saldo || 0),
-      saldo_berjalan: runningSummary?.saldo ?? Number(periodSummary.saldo || 0),
-      jumlah_transaksi: rows.length,
+      period_net: periodNet,
+      net_balance: periodNet,
+      saldo_periode: periodNet,
+      saldo_akhir_periode: saldoAkhirPeriode,
+      saldo: runningSummary?.saldo ?? saldoAkhirPeriode,
+      saldo_berjalan: runningSummary?.saldo ?? saldoAkhirPeriode,
+      jumlah_transaksi: Number(periodSummary.jumlah_transaksi || 0),
     },
     data: rows,
   };

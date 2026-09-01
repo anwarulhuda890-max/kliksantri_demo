@@ -36,6 +36,21 @@ function previousPeriod(now = new Date()) {
   return { bulan: date.getUTCMonth() + 1, tahun: date.getUTCFullYear() };
 }
 
+function assertPeriodSummary(summary, label) {
+  assert.strictEqual(
+    summary.period_net,
+    summary.pemasukan - summary.pengeluaran,
+    `${label}: Net harus sama dengan pemasukan dikurangi pengeluaran`,
+  );
+  assert.strictEqual(
+    summary.saldo_akhir_periode,
+    summary.saldo_awal + summary.period_net,
+    `${label}: Closing harus sama dengan opening ditambah net`,
+  );
+  assert.strictEqual(summary.saldo_periode, summary.period_net, `${label}: alias saldo_periode mismatch`);
+  assert.strictEqual(summary.net_balance, summary.period_net, `${label}: alias net_balance mismatch`);
+}
+
 async function main() {
   const client = await pool.connect();
   try {
@@ -59,7 +74,9 @@ async function main() {
     const current = new Date();
     const currentPeriod = { bulan: current.getMonth() + 1, tahun: current.getFullYear() };
     const previous = previousPeriod(current);
+    const earlier = previousPeriod(new Date(Date.UTC(previous.tahun, previous.bulan - 1, 1)));
     const reconciliation = [];
+    const netSigns = new Set();
 
     for (const unit of units) {
       const canonical = await getUnitCashRunningBalance(client, {
@@ -81,6 +98,14 @@ async function main() {
         requestFor(superadmin, { unit_id: unit.id, ...previous }),
         client,
       );
+      const pageEarlier = await listBukuKas(
+        requestFor(superadmin, { unit_id: unit.id, ...earlier }),
+        client,
+      );
+      const pageAnnual = await listBukuKas(
+        requestFor(superadmin, { unit_id: unit.id, bulan: "all", tahun: currentPeriod.tahun }),
+        client,
+      );
       const dashboard = await getDashboardSpecificUnit(client, {
         tenantId: TENANT_ID,
         unitId: unit.id,
@@ -92,16 +117,27 @@ async function main() {
       assert.strictEqual(pagePrevious.summary.saldo, canonical.saldo, `Previous filter changed running balance unit ${unit.id}`);
       assert.strictEqual(dashboard.finance.cash_balance, canonical.saldo, `Dashboard mismatch unit ${unit.id}`);
       assert.strictEqual(independent, canonical.saldo, `Independent DB mismatch unit ${unit.id}`);
+      assertPeriodSummary(pageCurrent.summary, `Current month unit ${unit.id}`);
+      assertPeriodSummary(pagePrevious.summary, `Previous month unit ${unit.id}`);
+      assertPeriodSummary(pageEarlier.summary, `Earlier month unit ${unit.id}`);
+      assertPeriodSummary(pageAnnual.summary, `Annual unit ${unit.id}`);
       assert.strictEqual(
-        pageCurrent.summary.saldo_periode,
-        pageCurrent.summary.pemasukan - pageCurrent.summary.pengeluaran,
-        `Current period summary mismatch unit ${unit.id}`,
+        pagePrevious.summary.saldo_akhir_periode,
+        pageCurrent.summary.saldo_awal,
+        `Closing bulan N tidak sama dengan opening bulan N+1 unit ${unit.id}`,
       );
       assert.strictEqual(
-        pagePrevious.summary.saldo_periode,
-        pagePrevious.summary.pemasukan - pagePrevious.summary.pengeluaran,
-        `Previous period summary mismatch unit ${unit.id}`,
+        pageAnnual.summary.saldo_akhir_periode,
+        canonical.saldo,
+        `Annual current-year closing mismatch unit ${unit.id}`,
       );
+      for (const value of [
+        pageCurrent.summary.period_net,
+        pagePrevious.summary.period_net,
+        pageEarlier.summary.period_net,
+      ]) {
+        netSigns.add(value > 0 ? "positive" : value < 0 ? "negative" : "zero");
+      }
 
       reconciliation.push({
         unit_id: Number(unit.id),
@@ -112,8 +148,14 @@ async function main() {
         mismatch: pageCurrent.summary.saldo - dashboard.finance.cash_balance,
         current_period_balance: pageCurrent.summary.saldo_periode,
         previous_period_balance: pagePrevious.summary.saldo_periode,
+        opening: pageCurrent.summary.saldo_awal,
+        closing: pageCurrent.summary.saldo_akhir_periode,
+        annual_net: pageAnnual.summary.period_net,
       });
     }
+    assert(netSigns.has("positive"), "Fixture read-only tidak mencakup positive net");
+    assert(netSigns.has("negative"), "Fixture read-only tidak mencakup negative net");
+    assert(netSigns.has("zero"), "Fixture read-only tidak mencakup zero net");
 
     const allUnits = await getDashboardAllUnitsV1(client, {
       tenantId: TENANT_ID,
@@ -215,8 +257,14 @@ async function main() {
       "utf8",
     );
     assert(bukuKasSource.includes("params: { ...readScopeParams, bulan, tahun }"));
-    assert(bukuKasSource.includes("const saldoKas = Number(summary.saldo || 0)"));
+    assert(bukuKasSource.includes('label="Saldo Net Periode"'));
+    assert(bukuKasSource.includes("summary.saldo_akhir_periode"));
     assert(bukuKasSource.includes("dataRequestRef.current.controller?.abort()"));
+    const exportSource = fs.readFileSync(
+      path.join(__dirname, "..", "frontend", "src", "utils", "exportExcel.js"),
+      "utf8",
+    );
+    assert(exportSource.includes('"Ringkasan"'));
     assert(bukuKasSource.includes("dataRequestRef.current.sequence !== sequence"));
 
     console.log(JSON.stringify({
@@ -229,6 +277,7 @@ async function main() {
         mismatch: canonicalTotal - allUnits.finance.cash.total_balance,
       },
       source_net: sourceNet,
+      net_signs: [...netSigns].sort(),
       future_rows_excluded_from_current_balance: futureRows,
       unit_switch: unitSwitch,
       cross_unit: crossUnit,

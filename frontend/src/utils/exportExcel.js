@@ -7,7 +7,8 @@ import { saveAs } from "file-saver";
 
 export const exportExcel = (
   data,
-  fileName
+  fileName,
+  { summary = null } = {},
 ) => {
 
   if (
@@ -40,6 +41,11 @@ export const exportExcel = (
     "Data"
 
   );
+
+  if (summary && summary.length > 0) {
+    const summaryWorksheet = XLSX.utils.json_to_sheet(summary);
+    XLSX.utils.book_append_sheet(workbook, summaryWorksheet, "Ringkasan");
+  }
 
   const excelBuffer =
     XLSX.write(

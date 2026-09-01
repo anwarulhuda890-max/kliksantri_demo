@@ -27,6 +27,13 @@ import { formatCurrency, formatNumber } from "../utils/formatCurrency";
 import { useActiveUnit } from "../context/ActiveUnitContext";
 import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
+function formatSignedCurrency(value, { showPlus = false } = {}) {
+  const amount = Number(value || 0);
+  if (amount < 0) return `-Rp ${Math.abs(amount).toLocaleString("id-ID")}`;
+  if (amount > 0 && showPlus) return `+Rp ${amount.toLocaleString("id-ID")}`;
+  return `Rp ${amount.toLocaleString("id-ID")}`;
+}
+
 function BukuKasPage() {
   const { activeUnitId, activeUnit, allUnitsAllowed } = useActiveUnit();
   const [data, setData] = useState([]);
@@ -44,10 +51,14 @@ function BukuKasPage() {
   });
   const [message, setMessage] = useState("");
   const [summary, setSummary] = useState({
+    saldo_awal: 0,
     pemasukan: 0,
     pengeluaran: 0,
     saldo: 0,
+    saldo_berjalan: 0,
     saldo_periode: 0,
+    period_net: 0,
+    saldo_akhir_periode: 0,
     jumlah_transaksi: 0,
   });
   const dataRequestRef = useRef({ sequence: 0, controller: null });
@@ -70,10 +81,14 @@ function BukuKasPage() {
       if (dataRequestRef.current.sequence !== sequence) return;
       setData(response.data.data);
       setSummary(response.data.summary || {
+        saldo_awal: 0,
         pemasukan: 0,
         pengeluaran: 0,
         saldo: 0,
+        saldo_berjalan: 0,
         saldo_periode: 0,
+        period_net: 0,
+        saldo_akhir_periode: 0,
         jumlah_transaksi: 0,
       });
     } catch (error) {
@@ -174,8 +189,18 @@ function BukuKasPage() {
     setPage(1);
   }, [search, bulan, tahun, setPage]);
 
-  const saldoKas = Number(summary.saldo || 0);
-  const jumlahTransaksi = filtered.length;
+  const saldoAwal = Number(summary.saldo_awal || 0);
+  const periodNet = Number(summary.period_net ?? summary.saldo_periode ?? 0);
+  const saldoAkhirPeriode = Number(summary.saldo_akhir_periode ?? (saldoAwal + periodNet));
+  const now = new Date();
+  const annualMode = bulan === "all";
+  const currentPeriod = Number(tahun) === now.getFullYear()
+    && (annualMode || Number(bulan) === now.getMonth() + 1);
+  const saldoKas = currentPeriod
+    ? Number(summary.saldo_berjalan ?? summary.saldo ?? saldoAkhirPeriode)
+    : saldoAkhirPeriode;
+  const saldoLabel = currentPeriod ? "Saldo Berjalan" : "Saldo Akhir";
+  const jumlahTransaksi = Number(summary.jumlah_transaksi || 0);
 
   const handleExport = () => {
     const rows = filtered.map((d) => ({
@@ -187,10 +212,21 @@ function BukuKasPage() {
       Petugas: d.petugas,
     }));
 
-    exportExcel(rows, "BukuKas");
+    const periodLabel = annualMode ? `Tahun ${tahun}` : `${bulanLabel} ${tahun}`;
+    exportExcel(rows, "BukuKas", {
+      summary: [
+        { KPI: "Periode", Nilai: periodLabel },
+        { KPI: "Saldo Awal", Nilai: saldoAwal },
+        { KPI: "Pemasukan", Nilai: totalMasuk },
+        { KPI: "Pengeluaran", Nilai: totalKeluar },
+        { KPI: "Saldo Net Periode", Nilai: periodNet },
+        { KPI: saldoLabel, Nilai: saldoKas },
+        { KPI: "Jumlah Transaksi", Nilai: jumlahTransaksi },
+      ],
+    });
   };
 
-  const bulanLabel = [
+  const bulanLabel = annualMode ? "Tahun" : [
     "Januari",
     "Februari",
     "Maret",
@@ -203,7 +239,7 @@ function BukuKasPage() {
     "Oktober",
     "November",
     "Desember",
-  ][bulan - 1];
+  ][Number(bulan) - 1];
 
   return (
     <AppShell title="Buku Kas" breadcrumb="Keuangan / Buku Kas">
@@ -215,7 +251,12 @@ function BukuKasPage() {
       </div>
       <Card padding="md" shadow="card" border={false} radius="xl">
         <FilterBar label="Periode">
-          <Select value={bulan} onChange={(e) => setBulan(Number(e.target.value))} aria-label="Bulan">
+          <Select
+            value={bulan}
+            onChange={(e) => setBulan(e.target.value === "all" ? "all" : Number(e.target.value))}
+            aria-label="Bulan"
+          >
+            <option value="all">Semua Bulan (Tahunan)</option>
             <option value={1}>Januari</option>
             <option value={2}>Februari</option>
             <option value={3}>Maret</option>
@@ -241,16 +282,26 @@ function BukuKasPage() {
       <div style={{ marginTop: "var(--space-6)" }}>
         <KpiGrid>
           <KpiCard
-            label="Total Pemasukan"
+            label="Saldo Awal"
+            value={formatSignedCurrency(saldoAwal)}
+            accent="neutral"
+          />
+          <KpiCard
+            label="Pemasukan"
             value={formatCurrency(totalMasuk)}
             accent="success"
           />
           <KpiCard
-            label="Total Pengeluaran"
+            label="Pengeluaran"
             value={formatCurrency(totalKeluar)}
             accent="danger"
           />
-          <KpiCard label="Saldo Berjalan" value={formatCurrency(saldoKas)} accent="primary" />
+          <KpiCard
+            label="Saldo Net Periode"
+            value={formatSignedCurrency(periodNet, { showPlus: true })}
+            accent="neutral"
+          />
+          <KpiCard label={saldoLabel} value={formatSignedCurrency(saldoKas)} accent="primary" />
           <KpiCard label="Jumlah Transaksi" value={formatNumber(jumlahTransaksi)} accent="neutral" />
         </KpiGrid>
       </div>
@@ -342,7 +393,7 @@ function BukuKasPage() {
       <div style={{ marginTop: "var(--space-6)" }}>
         <DataTableCard
           title="Daftar Transaksi"
-          subtitle={`Arus kas ${bulanLabel} ${tahun}`}
+          subtitle={annualMode ? `Arus kas tahun ${tahun}` : `Arus kas ${bulanLabel} ${tahun}`}
           actions={
             <span style={{ fontSize: "13px", color: "var(--text-secondary)", fontWeight: 600 }}>
               {filtered.length} transaksi
