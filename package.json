@@ -34,7 +34,9 @@
     "migration:083:production": "node scripts/run-migration-083-production.js",
     "migration:085:production": "node scripts/run-migration-085-production.js",
     "test:wallet-corrections": "node scripts/rehearse-wallet-transaction-corrections.js",
-    "test:cash-dashboard-reconciliation": "node scripts/test-cash-dashboard-reconciliation.js"
+    "test:cash-dashboard-reconciliation": "node scripts/test-cash-dashboard-reconciliation.js",
+    "test:branding-domain": "node scripts/test-branding-domain-contract.js",
+    "migration:086:production": "node scripts/run-migration-086-production.js"
   },
   "keywords": [],
   "author": "",

@@ -1,4 +1,4 @@
-# KlikSantri — Wali App Environment Variables
+# KlikPesantren — Wali App Environment Variables
 
 Dokumen variabel lingkungan untuk **APK Wali Santri** (`wali-app/`, Expo + React Native).
 

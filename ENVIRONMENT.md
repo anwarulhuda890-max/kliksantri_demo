@@ -1,4 +1,4 @@
-# KlikSantri — Backend Environment Variables
+# KlikPesantren — Backend Environment Variables
 
 Dokumen referensi variabel lingkungan untuk **API Express** (`server.js`).
 
@@ -30,7 +30,7 @@ Dokumen referensi variabel lingkungan untuk **API Express** (`server.js`).
 | Variable | Deskripsi | Default | Catatan |
 |----------|-----------|---------|---------|
 | `PORT` | Port HTTP | `3000` | Railway inject otomatis |
-| `CORS_ORIGIN` | Origin Socket.io (admin) | — | URL Vercel admin, mis. `https://admin.domain.com` |
+| `CORS_ORIGIN` | Origin Socket.io (admin) | — | URL admin canonical: `https://app.klikpesantren.com` |
 | `FRONTEND_URL` | Fallback jika `CORS_ORIGIN` kosong | — | Sama dengan origin admin |
 | *(dev fallback)* | Socket.io origin | `http://localhost:5173` | Hanya jika kedua env di atas kosong |
 
@@ -64,7 +64,7 @@ Dokumen referensi variabel lingkungan untuk **API Express** (`server.js`).
 | `PGPORT` | `DB_PORT` |
 
 3. Generate & set `JWT_SECRET`, `WALI_JWT_SECRET`
-4. Set `CORS_ORIGIN` = URL frontend Vercel (HTTPS, tanpa trailing slash)
+4. Set `CORS_ORIGIN` dan `FRONTEND_URL` = `https://app.klikpesantren.com` (HTTPS, tanpa trailing slash)
 
 ---
 

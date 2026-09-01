@@ -7,7 +7,7 @@ export const TENANT_FALLBACKS = {
   tagline: "Portal Wali Santri",
 };
 
-export const KLIKSANTRI_LOGIN_BRANDING = {
+export const KLIKPESANTREN_LOGIN_BRANDING = {
   name: "KlikPesantren",
   address: "Administrasi Pesantren Digital",
   tagline: "Sistem Administrasi Pesantren Modern",
@@ -96,7 +96,7 @@ export function resolveTenantDisplay(profile) {
 /** Map GET /public/tenants/:slug/profile → login / preview display */
 export function resolvePublicTenantDisplay(publicProfile) {
   if (!publicProfile) {
-    return { ...KLIKSANTRI_LOGIN_BRANDING, hasCustomName: false };
+    return { ...KLIKPESANTREN_LOGIN_BRANDING, hasCustomName: false };
   }
 
   const address =

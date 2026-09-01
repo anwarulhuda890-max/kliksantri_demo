@@ -10,7 +10,7 @@ const pool = require("../db");
 const BASE = process.env.SMOKE_BASE_URL || "http://localhost:3016";
 const TEST_SLUG = "tenant-test-3b2";
 const INACTIVE_MSG =
-  "Layanan KlikSantri untuk pesantren ini sedang tidak aktif.";
+  "Layanan KlikPesantren untuk pesantren ini sedang tidak aktif.";
 
 const ADMIN_USER = "admin_test_3b2";
 const ADMIN_PASS = "test123456";

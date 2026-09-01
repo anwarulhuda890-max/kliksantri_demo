@@ -69,7 +69,7 @@ import PlatformBackupRestorePage from "./pages/platform/PlatformBackupRestorePag
 import PlatformProfilePage from "./pages/platform/PlatformProfilePage";
 import PlatformAnnouncementsPage from "./pages/platform/PlatformAnnouncementsPage";
 import PlatformWebsitePage from "./pages/platform/PlatformWebsitePage";
-import AboutKlikSantriPage from "./pages/AboutKlikSantriPage";
+import AboutKlikPesantrenPage from "./pages/AboutKlikPesantrenPage";
 import PlatformInfoAnnouncementsPage from "./pages/PlatformInfoAnnouncementsPage";
 import LandingPage from "./pages/LandingPage";
 import FoundingPartnerPage from "./pages/FoundingPartnerPage";
@@ -153,7 +153,7 @@ function RootRoute() {
     return <Navigate to="/platform" replace />;
   }
 
-  if (hostnameRoute.type === "legacy-app") {
+  if (hostnameRoute.type === "app") {
     return <LoginPage />;
   }
 
@@ -631,7 +631,7 @@ function App() {
           path="/about"
           element={
             <ProtectedRoute>
-              <AboutKlikSantriPage />
+              <AboutKlikPesantrenPage />
             </ProtectedRoute>
           }
         />

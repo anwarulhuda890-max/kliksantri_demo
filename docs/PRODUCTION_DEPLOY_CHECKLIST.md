@@ -1,4 +1,4 @@
-# KlikSantri Production Deploy Checklist
+# KlikPesantren Production Deploy Checklist
 
 ## 1. Backup
 

@@ -11,7 +11,7 @@ const TEST_SLUG = "tenant-smoke-3b5";
 const ADMIN_USER = "admin_smoke_3b5";
 const ADMIN_PASS = "test123456";
 const INACTIVE_MSG =
-  "Layanan KlikSantri untuk pesantren ini sedang tidak aktif.";
+  "Layanan KlikPesantren untuk pesantren ini sedang tidak aktif.";
 
 let passed = 0;
 let failed = 0;

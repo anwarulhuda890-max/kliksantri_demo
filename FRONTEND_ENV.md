@@ -1,4 +1,4 @@
-# KlikSantri — Frontend Admin Environment Variables
+# KlikPesantren — Frontend Admin Environment Variables
 
 Dokumen variabel lingkungan untuk **Admin Panel** (`frontend/`, Vite + React).
 
@@ -69,7 +69,7 @@ Development (npm run dev):
 **Environment Variables (Production):**
 
 ```env
-VITE_API_BASE_URL=https://<railway-api-domain>
+VITE_API_BASE_URL=https://api.klikpesantren.com
 ```
 
 > Tanpa trailing slash.

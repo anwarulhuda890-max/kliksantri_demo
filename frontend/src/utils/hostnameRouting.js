@@ -48,7 +48,7 @@ export function resolveHostname(hostname) {
   }
 
   if (normalized === `app.${ROOT_DOMAIN}`) {
-    return { ...result, type: "legacy-app" };
+    return { ...result, type: "app" };
   }
 
   if (normalized === "vercel.app" || normalized.endsWith(".vercel.app")) {

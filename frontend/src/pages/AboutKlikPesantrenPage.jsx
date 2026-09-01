@@ -4,7 +4,7 @@ import Card from "../components/ui/Card";
 import { fetchPublicPlatformSettings } from "../services/platformPublicApi";
 import { resolveMediaUrl } from "../utils/mediaUrl";
 
-function AboutKlikSantriPage() {
+function AboutKlikPesantrenPage() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -186,4 +186,4 @@ const errorStyle = {
   fontWeight: 600,
 };
 
-export default AboutKlikSantriPage;
+export default AboutKlikPesantrenPage;

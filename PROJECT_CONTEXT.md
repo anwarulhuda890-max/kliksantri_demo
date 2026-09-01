@@ -1,4 +1,4 @@
-Nama Produk: KlikSantri
+Nama Produk: KlikPesantren
 
 Frontend:
 React + Vite + Tailwind

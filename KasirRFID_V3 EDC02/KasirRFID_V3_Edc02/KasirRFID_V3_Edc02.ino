@@ -154,7 +154,7 @@ const char* password =
 // =====================
 
 String SERVER_URL =
-  "https://kliksantridemo-production-1930.up.railway.app";
+  "https://api.klikpesantren.com";
 
 String TENANT_SLUG =
   "anwarulhuda313";

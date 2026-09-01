@@ -191,7 +191,7 @@ function Invoke-NeonVerify {
 
 $resolvedDump = if ($DumpPath) { $DumpPath } else { Get-DefaultDumpPath }
 
-Write-Host 'KlikSantri - migrate local PostgreSQL to Neon'
+Write-Host 'KlikPesantren - migrate local PostgreSQL to Neon'
 Write-Host ('Mode: ' + $Mode)
 
 switch ($Mode) {

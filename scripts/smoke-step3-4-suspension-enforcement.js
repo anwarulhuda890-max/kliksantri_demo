@@ -14,7 +14,7 @@ const ADMIN_PASS = "test123456";
 const WALI_HP = "081234567890";
 const WALI_PIN = "456789";
 const INACTIVE_MSG =
-  "Layanan KlikSantri untuk pesantren ini sedang tidak aktif.";
+  "Layanan KlikPesantren untuk pesantren ini sedang tidak aktif.";
 
 let passed = 0;
 let failed = 0;

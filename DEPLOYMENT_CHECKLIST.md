@@ -1,4 +1,4 @@
-# KlikSantri — Deployment Checklist
+# KlikPesantren — Deployment Checklist
 
 Arsitektur target:
 

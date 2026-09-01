@@ -9,7 +9,7 @@ import TenantPortalErrorPage from "./TenantPortalErrorPage";
 import { setUser, getUser, clearSession } from "../utils/storage";
 import { TENANT_SUSPEND_SESSION_KEY } from "../constants/tenant";
 import {
-  KLIKSANTRI_LOGIN_BRANDING,
+  KLIKPESANTREN_LOGIN_BRANDING,
   LAST_TENANT_SLUG_KEY,
   normalizeTenantSlugInput,
   resolvePublicTenantDisplay,
@@ -227,19 +227,19 @@ function LoginPage({ tenantSubdomain = false, hostnameTenantSlug = "" }) {
   const display = useMemo(() => {
     const normalized = normalizeTenantSlugInput(tenantSlug);
     if (!normalized) {
-      return { ...KLIKSANTRI_LOGIN_BRANDING, hasCustomName: false };
+      return { ...KLIKPESANTREN_LOGIN_BRANDING, hasCustomName: false };
     }
     if (slugStatus === "found" && publicProfile) {
       return resolvePublicTenantDisplay(publicProfile);
     }
     if (slugStatus === "loading") {
       return resolvePublicTenantDisplay(publicProfile) || {
-        ...KLIKSANTRI_LOGIN_BRANDING,
+        ...KLIKPESANTREN_LOGIN_BRANDING,
         name: "Memuat...",
         hasCustomName: false,
       };
     }
-    return { ...KLIKSANTRI_LOGIN_BRANDING, hasCustomName: false };
+    return { ...KLIKPESANTREN_LOGIN_BRANDING, hasCustomName: false };
   }, [tenantSlug, slugStatus, publicProfile]);
 
   const loginDisabled =
@@ -421,7 +421,7 @@ function LoginPage({ tenantSubdomain = false, hostnameTenantSlug = "" }) {
         location={display.address}
       />
       <p className="login-tagline">
-        {display.tagline || KLIKSANTRI_LOGIN_BRANDING.tagline}
+        {display.tagline || KLIKPESANTREN_LOGIN_BRANDING.tagline}
       </p>
       <p className="login-powered">Powered by KlikPesantren</p>
     </>
