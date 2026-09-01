@@ -9,6 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useActiveChild } from '../../context/ActiveChildContext';
 import { useRFID } from '../../hooks/useRFID';
+import { useWaliFeatures } from '../../hooks/useWaliFeatures';
 import { ChildSwitcherBar } from '../../components/dashboard/ChildSwitcherBar';
 import { LoadingSpinner } from '../../components/common/LoadingSpinner';
 import { ErrorView } from '../../components/common/ErrorView';
@@ -37,7 +38,7 @@ function getTrxMeta(trxType) {
   return { label: trxType ?? 'Transaksi', variant: 'neutral', sign: '', icon: 'swap-horizontal' };
 }
 
-function SaldoHeader({ saldo, activeChild }) {
+function SaldoHeader({ saldo, activeChild, rfidEnabled }) {
   const kartuAktif = saldo?.kartu_aktif ?? false;
   const nominal = saldo?.saldo ?? 0;
   const limitHarian = saldo?.limit_harian ?? 0;
@@ -45,10 +46,10 @@ function SaldoHeader({ saldo, activeChild }) {
   return (
     <AppCard padding="lg" style={styles.saldoCard} accent="primary">
       <View style={styles.saldoTop}>
-        <AppText variant="bodyMedium" color="inverse">Saldo RFID</AppText>
-        <StatusBadge variant={kartuAktif ? 'success' : 'neutral'} size="sm">
+        <AppText variant="bodyMedium" color="inverse">{rfidEnabled ? 'Saldo Dompet & RFID' : 'Saldo Dompet'}</AppText>
+        {rfidEnabled ? <StatusBadge variant={kartuAktif ? 'success' : 'neutral'} size="sm">
           {kartuAktif ? 'Kartu Aktif' : 'Tidak Ada Kartu'}
-        </StatusBadge>
+        </StatusBadge> : null}
       </View>
       <AppText variant="display" color="inverse">{formatCurrency(nominal)}</AppText>
       {limitHarian > 0 ? (
@@ -93,6 +94,7 @@ function MutasiItem({ item }) {
 
 export function RFIDScreen() {
   const { activeSantriId, activeChild } = useActiveChild();
+  const { features } = useWaliFeatures(activeChild);
   const {
     saldo,
     mutasi,
@@ -104,7 +106,7 @@ export function RFIDScreen() {
     error,
     refresh,
     loadMore,
-  } = useRFID(activeSantriId);
+  } = useRFID(activeSantriId, features.wallet === true);
 
   const handleEndReached = useCallback(() => {
     if (!isLoadingMore && hasMore) loadMore();
@@ -114,7 +116,7 @@ export function RFIDScreen() {
     return (
       <ScreenContainer>
         <ChildSwitcherBar />
-        <LoadingSpinner message="Memuat data RFID..." />
+        <LoadingSpinner message="Memuat data dompet..." />
       </ScreenContainer>
     );
   }
@@ -137,14 +139,14 @@ export function RFIDScreen() {
         ListHeaderComponent={
           <>
             <ChildSwitcherBar />
-            <SaldoHeader saldo={saldo} activeChild={activeChild} />
+            <SaldoHeader saldo={saldo} activeChild={activeChild} rfidEnabled={features.rfid === true} />
             <ListSectionHeader title="Riwayat Mutasi" count={total > 0 ? `${total} transaksi` : null} />
             {error && saldo ? <StaleDataBanner /> : null}
           </>
         }
         ListEmptyComponent={
           !isLoadingFirst ? (
-            <EmptyState title="Belum Ada Transaksi" description="Riwayat mutasi RFID akan muncul di sini." icon="card-outline" />
+            <EmptyState title="Belum Ada Transaksi" description="Riwayat mutasi dompet akan muncul di sini." icon="wallet-outline" />
           ) : null
         }
         ListFooterComponent={

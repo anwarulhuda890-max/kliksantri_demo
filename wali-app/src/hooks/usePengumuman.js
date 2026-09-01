@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { pengumumanApi } from '../api/pengumuman.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
-export function usePengumuman() {
+export function usePengumuman(enabled = true) {
+  const { activeSantriId, activeUnitId } = useActiveChild();
   const [data, setData] = useState([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -12,6 +14,7 @@ export function usePengumuman() {
   const reqRef = useRef(0);
 
   const fetchList = useCallback(async ({ silent = false } = {}) => {
+    if (!activeSantriId || !activeUnitId || !enabled) return;
     const reqId = ++reqRef.current;
 
     if (!silent) setIsLoading(true);
@@ -35,11 +38,17 @@ export function usePengumuman() {
         setIsRefreshing(false);
       }
     }
-  }, []);
+  }, [activeSantriId, activeUnitId, enabled]);
 
   useEffect(() => {
-    fetchList({ silent: false });
-  }, [fetchList]);
+    reqRef.current += 1;
+    setData([]);
+    setTotal(0);
+    setError(null);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    if (enabled) fetchList({ silent: false });
+  }, [enabled, fetchList]);
 
   return {
     data,

@@ -20,15 +20,15 @@ export function KeuanganStack() {
         component={KeuanganScreen}
         options={{ headerShown: false }}
       />
-      {features.rfid ? <Stack.Screen name="RFID" component={RFIDScreen} options={{ title: 'Saldo & Mutasi RFID' }} /> : null}
-      <Stack.Screen name="Sahriyah" component={SahriyahScreen} options={{ title: 'Sahriyah' }} />
-      <Stack.Screen
+      {features.wallet === true ? <Stack.Screen name="RFID" component={RFIDScreen} options={{ title: features.rfid === true ? 'Dompet & RFID' : 'Dompet Santri' }} /> : null}
+      {features.sahriyah === true ? <Stack.Screen name="Sahriyah" component={SahriyahScreen} options={{ title: 'Sahriyah' }} /> : null}
+      {features.sahriyah === true ? <Stack.Screen
         name="DetailTagihan"
         component={DetailTagihanScreen}
         options={({ route }) => ({
           title: route.params?.title ? `Sahriyah ${route.params.title}` : 'Detail Tagihan',
         })}
-      />
+      /> : null}
     </Stack.Navigator>
   );
 }

@@ -13,7 +13,7 @@ const QUICK_ITEMS = [
   { key: 'Pelanggaran', featureKey: 'pelanggaran', label: 'Pelanggaran', icon: 'alert-circle-outline', tab: 'Monitoring', screen: 'Pelanggaran' },
   { key: 'Kesehatan', featureKey: 'kesehatan', label: 'Kesehatan', icon: 'heart-outline', tab: 'Monitoring', screen: 'Kesehatan' },
   { key: 'Sahriyah', featureKey: 'sahriyah', label: 'Sahriyah', icon: 'receipt-outline', tab: 'Keuangan', screen: 'Sahriyah' },
-  { key: 'RFID', featureKey: 'rfid', label: 'RFID & Saldo', icon: 'card-outline', tab: 'Keuangan', screen: 'RFID' },
+  { key: 'Wallet', featureKey: 'wallet', label: 'Dompet', icon: 'wallet-outline', tab: 'Keuangan', screen: 'RFID' },
 ];
 
 const COLS = 4;
@@ -35,7 +35,11 @@ export function QuickAccessGrid({ navigation, features }) {
     [width]
   );
   const visibleItems = useMemo(
-    () => QUICK_ITEMS.filter((item) => features?.[item.featureKey] !== false),
+    () => QUICK_ITEMS
+      .filter((item) => features?.[item.featureKey] === true)
+      .map((item) => item.key === 'Wallet'
+        ? { ...item, label: features?.rfid === true ? 'Dompet & RFID' : 'Dompet' }
+        : item),
     [features],
   );
 

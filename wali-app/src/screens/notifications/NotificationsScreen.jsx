@@ -16,29 +16,35 @@ import { useActiveChild } from '../../context/ActiveChildContext';
 import { colors } from '../../constants/colors';
 import { interaction, radius, spacing } from '../../constants/theme';
 import { registerPushTokenBackground } from '../../services/pushNotificationService';
+import { featuresApi } from '../../api/features.api';
 
 const TYPE_META = {
   pelanggaran: {
+    featureKey: 'pelanggaran',
     icon: 'alert-circle-outline',
     color: colors.danger,
     route: { tab: 'Monitoring', screen: 'Pelanggaran' },
   },
   perizinan: {
+    featureKey: 'perizinan',
     icon: 'document-text-outline',
     color: colors.warning,
     route: { tab: 'Monitoring', screen: 'Perizinan' },
   },
   kesehatan: {
+    featureKey: 'kesehatan',
     icon: 'heart-outline',
     color: colors.danger,
     route: { tab: 'Monitoring', screen: 'Kesehatan' },
   },
   pengumuman: {
+    featureKey: 'pengumuman',
     icon: 'megaphone-outline',
     color: colors.info,
     route: { tab: 'Pengumuman', screen: 'PengumumanHome' },
   },
   sahriyah: {
+    featureKey: 'sahriyah',
     icon: 'receipt-outline',
     color: colors.success,
     route: { tab: 'Keuangan', screen: 'Sahriyah' },
@@ -119,16 +125,36 @@ export function NotificationsScreen({ navigation }) {
       await markRead(item.id);
     }
 
+    const meta = TYPE_META[item.type];
     const santriId = item.santri_id ?? item.data?.santri_id;
-    if (santriId) {
-      const child = anak.find((row) => String(row.santri_id ?? row.id) === String(santriId));
-      if (child) {
-        await setActiveSantri(child);
-      }
+    const unitId = item.unit_id ?? item.data?.unit_id;
+    const matches = anak.filter((row) => String(row.santri_id ?? row.id) === String(santriId));
+    const child = unitId != null
+      ? matches.find((row) => Number(row.unit_id) === Number(unitId))
+      : matches.length === 1 ? matches[0] : null;
+
+    const fallback = () => navigation.navigate('MainTabs', { screen: 'Beranda' });
+    if (!child || !meta?.route) {
+      fallback();
+      return;
     }
 
-    const meta = TYPE_META[item.type];
-    if (!meta?.route) return;
+    await setActiveSantri(child);
+
+    try {
+      const capabilityResponse = await featuresApi.getFeatures();
+      const capabilities = capabilityResponse.data ?? {};
+      if (
+        Number(capabilities.unit_id) !== Number(child.unit_id)
+        || capabilities[meta.featureKey] !== true
+      ) {
+        fallback();
+        return;
+      }
+    } catch {
+      fallback();
+      return;
+    }
 
     navigation.navigate('MainTabs', {
       screen: meta.route.tab,

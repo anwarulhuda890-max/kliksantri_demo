@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { nilaiApi } from '../api/nilai.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
-export function useNilai(activeSantriId, bulan, tahun) {
+export function useNilai(activeSantriId, bulan, tahun, enabled = true) {
+  const { activeUnitId } = useActiveChild();
   const [data, setData] = useState([]);
   const [ringkasan, setRingkasan] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -14,7 +16,7 @@ export function useNilai(activeSantriId, bulan, tahun) {
 
   const fetchNilai = useCallback(
     async ({ silent = false } = {}) => {
-      if (!activeSantriId) return;
+      if (!activeSantriId || !activeUnitId || !enabled) return;
 
       const reqId = ++reqRef.current;
 
@@ -40,16 +42,19 @@ export function useNilai(activeSantriId, bulan, tahun) {
         }
       }
     },
-    [activeSantriId, bulan, tahun]
+    [activeSantriId, activeUnitId, bulan, tahun, enabled]
   );
 
   // Reset state penuh saat santri atau periode berubah
   useEffect(() => {
+    reqRef.current += 1;
     setData([]);
     setRingkasan(null);
     setError(null);
-    fetchNilai({ silent: false });
-  }, [fetchNilai]);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    if (enabled) fetchNilai({ silent: false });
+  }, [enabled, fetchNilai]);
 
   return {
     data,

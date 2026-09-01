@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { hafalanApi } from '../api/hafalan.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
-export function useHafalan(activeSantriId, bulan, tahun) {
+export function useHafalan(activeSantriId, bulan, tahun, enabled = true) {
+  const { activeUnitId } = useActiveChild();
   const [data, setData] = useState([]);
   const [ringkasan, setRingkasan] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -13,7 +15,7 @@ export function useHafalan(activeSantriId, bulan, tahun) {
 
   const fetchHafalan = useCallback(
     async ({ silent = false } = {}) => {
-      if (!activeSantriId) return;
+      if (!activeSantriId || !activeUnitId || !enabled) return;
 
       const reqId = ++reqRef.current;
 
@@ -39,15 +41,18 @@ export function useHafalan(activeSantriId, bulan, tahun) {
         }
       }
     },
-    [activeSantriId, bulan, tahun]
+    [activeSantriId, activeUnitId, bulan, tahun, enabled]
   );
 
   useEffect(() => {
+    reqRef.current += 1;
     setData([]);
     setRingkasan(null);
     setError(null);
-    fetchHafalan({ silent: false });
-  }, [fetchHafalan]);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    if (enabled) fetchHafalan({ silent: false });
+  }, [enabled, fetchHafalan]);
 
   return {
     data,

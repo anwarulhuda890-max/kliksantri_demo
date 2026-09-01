@@ -30,19 +30,21 @@ import { ErrorView } from '../../components/common/ErrorView';
 import { colors } from '../../constants/colors';
 import { getTabBarScrollInset, spacing } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MONITORING_FEATURE_KEYS, hasAnyFeature } from '../../utils/unitFeatures';
 
 export function DashboardScreen({ navigation: tabNavigation }) {
   const insets = useSafeAreaInsets();
   const { activeSantriId, activeChild } = useActiveChild();
   const { wali, anak } = useAuth();
   const { data, isLoading, error, refresh } = useDashboard(activeSantriId);
-  const { data: pengumuman, refresh: refreshPengumuman } = usePengumuman();
+  const { features, refresh: refreshFeatures } = useWaliFeatures(activeChild);
+  const { data: pengumuman, refresh: refreshPengumuman } = usePengumuman(features.pengumuman === true);
   const { data: pesantren, refresh: refreshPesantren } = useProfilPesantren();
   const { unreadCount, refreshUnreadCount } = useNotifications({ limit: 1 });
-  const { features, refresh: refreshFeatures } = useWaliFeatures(activeChild);
   const { data: homeLinks, refresh: refreshHomeLinks } = useHomeLinks();
 
-  const hasPengumuman = (pengumuman?.length ?? 0) > 0;
+  const hasPengumuman = features.pengumuman === true && (pengumuman?.length ?? 0) > 0;
+  const hasMonitoring = hasAnyFeature(features, MONITORING_FEATURE_KEYS);
   const showGanti = anak.length > 1;
   const handleGantiAnak = () => {
     const parent = tabNavigation.getParent?.();
@@ -145,13 +147,13 @@ export function DashboardScreen({ navigation: tabNavigation }) {
         <StatusHariIni
           data={data}
           features={features}
-          onLihatSemua={() => tabNavigation.navigate('Monitoring')}
+          onLihatSemua={hasMonitoring ? () => tabNavigation.navigate('Monitoring') : undefined}
         />
 
         <SectionHeading
           title="Menu Utama"
-          actionLabel="Lihat Semua Menu"
-          onAction={() => tabNavigation.navigate('Monitoring')}
+          actionLabel={hasMonitoring ? 'Lihat Semua Menu' : undefined}
+          onAction={hasMonitoring ? () => tabNavigation.navigate('Monitoring') : undefined}
         />
         <QuickAccessGrid navigation={tabNavigation} features={features} />
 

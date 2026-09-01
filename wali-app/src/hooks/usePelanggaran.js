@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { pelanggaranApi } from '../api/pelanggaran.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
-export function usePelanggaran(activeSantriId) {
+export function usePelanggaran(activeSantriId, enabled = true) {
+  const { activeUnitId } = useActiveChild();
   const [data, setData] = useState([]);
   const [ringkasan, setRingkasan] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -14,7 +16,7 @@ export function usePelanggaran(activeSantriId) {
 
   const fetchPelanggaran = useCallback(
     async ({ silent = false } = {}) => {
-      if (!activeSantriId) return;
+      if (!activeSantriId || !activeUnitId || !enabled) return;
 
       const reqId = ++reqRef.current;
 
@@ -41,16 +43,19 @@ export function usePelanggaran(activeSantriId) {
         }
       }
     },
-    [activeSantriId]
+    [activeSantriId, activeUnitId, enabled]
   );
 
   // Reset state saat santri berubah, lalu fetch ulang
   useEffect(() => {
+    reqRef.current += 1;
     setData([]);
     setRingkasan(null);
     setError(null);
-    fetchPelanggaran({ silent: false });
-  }, [fetchPelanggaran]);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    if (enabled) fetchPelanggaran({ silent: false });
+  }, [enabled, fetchPelanggaran]);
 
   return {
     data,

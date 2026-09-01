@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { sahriyahApi } from '../api/sahriyah.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
-export function useSahriyah(activeSantriId) {
+export function useSahriyah(activeSantriId, enabled = true) {
+  const { activeUnitId } = useActiveChild();
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -11,7 +13,7 @@ export function useSahriyah(activeSantriId) {
 
   const fetchList = useCallback(
     async ({ silent = false } = {}) => {
-      if (!activeSantriId) return;
+      if (!activeSantriId || !activeUnitId || !enabled) return;
       const requestId = ++requestRef.current;
 
       if (!silent) setIsLoading(true);
@@ -33,15 +35,18 @@ export function useSahriyah(activeSantriId) {
         }
       }
     },
-    [activeSantriId]
+    [activeSantriId, activeUnitId, enabled]
   );
 
   // Reset + fetch ulang saat santri berganti
   useEffect(() => {
+    requestRef.current += 1;
     setData([]);
     setError(null);
-    fetchList({ silent: false });
-  }, [fetchList]);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    if (enabled) fetchList({ silent: false });
+  }, [enabled, fetchList]);
 
   return {
     data,

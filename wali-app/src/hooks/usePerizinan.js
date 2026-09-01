@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { perizinanApi } from '../api/perizinan.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
-export function usePerizinan(activeSantriId) {
+export function usePerizinan(activeSantriId, enabled = true) {
+  const { activeUnitId } = useActiveChild();
   const [data, setData] = useState([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -12,7 +14,7 @@ export function usePerizinan(activeSantriId) {
 
   const fetchPerizinan = useCallback(
     async ({ silent = false } = {}) => {
-      if (!activeSantriId) return;
+      if (!activeSantriId || !activeUnitId || !enabled) return;
       const requestId = ++requestRef.current;
 
       if (!silent) setIsLoading(true);
@@ -35,15 +37,18 @@ export function usePerizinan(activeSantriId) {
         }
       }
     },
-    [activeSantriId]
+    [activeSantriId, activeUnitId, enabled]
   );
 
   useEffect(() => {
+    requestRef.current += 1;
     setData([]);
     setTotal(0);
     setError(null);
-    fetchPerizinan({ silent: false });
-  }, [fetchPerizinan]);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    if (enabled) fetchPerizinan({ silent: false });
+  }, [enabled, fetchPerizinan]);
 
   return {
     data,

@@ -64,9 +64,9 @@ export function KeuanganScreen() {
   const { activeSantriId, activeChild } = useActiveChild();
   const { features } = useWaliFeatures(activeChild);
 
-  const sahriyah = useSahriyah(activeSantriId);
+  const sahriyah = useSahriyah(activeSantriId, features.sahriyah === true);
 
-  const rfid = useRFID(activeSantriId, features.rfid);
+  const rfid = useRFID(activeSantriId, features.wallet === true);
 
 
 
@@ -86,7 +86,8 @@ export function KeuanganScreen() {
 
 
 
-  const loading = (sahriyah.isLoading && !sahriyah.data.length) || rfid.isLoadingFirst;
+  const loading = (features.sahriyah === true && sahriyah.isLoading && !sahriyah.data.length)
+    || (features.wallet === true && rfid.isLoadingFirst);
 
   const refreshing = sahriyah.isRefreshing || rfid.isRefreshing;
 
@@ -94,9 +95,9 @@ export function KeuanganScreen() {
 
   function refreshAll() {
 
-    sahriyah.refresh();
+    if (features.sahriyah === true) sahriyah.refresh();
 
-    rfid.refresh();
+    if (features.wallet === true) rfid.refresh();
 
   }
 
@@ -206,11 +207,17 @@ export function KeuanganScreen() {
 
           tagihanStatus={tagihanStatus}
 
+          showSahriyah={features.sahriyah === true}
+
+          showWallet={features.wallet === true}
+
+          rfidEnabled={features.rfid === true}
+
         />
 
 
 
-        <View style={styles.section}>
+        {features.sahriyah === true ? <View style={styles.section}>
 
           <View style={styles.sectionHead}>
 
@@ -294,16 +301,16 @@ export function KeuanganScreen() {
 
           </AppCard>
 
-        </View>
+        </View> : null}
 
 
 
-        {features.rfid ? (
+        {features.wallet === true ? (
         <View style={styles.section}>
 
           <View style={styles.sectionHead}>
 
-            <AppText variant="h3">RFID</AppText>
+            <AppText variant="h3">{features.rfid === true ? 'Dompet & RFID' : 'Dompet Santri'}</AppText>
 
             <TouchableOpacity
 

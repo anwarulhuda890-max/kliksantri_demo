@@ -30,7 +30,7 @@ function buildItems(d, features = {}) {
   const total = d.kehadiran?.total;
 
   const items = [
-    {
+    features.absensi === true ? {
       key: 'kehadiran',
       icon: 'checkmark-circle-outline',
       label: 'Kehadiran',
@@ -40,8 +40,8 @@ function buildItems(d, features = {}) {
           ? `${hadir}/${total} hadir`
           : '—',
       tone: (d.izin_aktif ?? 0) > 0 ? 'memorization' : 'attendance',
-    },
-    features.kesehatan !== false ? {
+    } : null,
+    features.kesehatan === true ? {
       key: 'kesehatan',
       icon: 'heart-outline',
       label: 'Kesehatan',
@@ -49,7 +49,7 @@ function buildItems(d, features = {}) {
       desc: isSakit ? 'Perlu perhatian' : 'Kondisi baik',
       tone: 'health',
     } : null,
-    features.hafalan !== false ? {
+    features.hafalan === true ? {
       key: 'hafalan',
       icon: 'star-outline',
       label: 'Hafalan',
@@ -57,16 +57,18 @@ function buildItems(d, features = {}) {
       desc: 'Setoran',
       tone: 'memorization',
     } : null,
-    {
+    (features.wallet === true || features.sahriyah === true) ? {
       key: 'keuangan',
       icon: 'wallet-outline',
       label: 'Keuangan',
       value: sahriyahLunas ? 'Aman' : 'Belum',
-      desc: sahriyahLunas
-        ? formatCurrency(d.saldo_rfid ?? 0)
-        : formatCurrency(d.sahriyah_aktif?.sisa_tagihan ?? 0),
+      desc: features.sahriyah === true && !sahriyahLunas
+        ? formatCurrency(d.sahriyah_aktif?.sisa_tagihan ?? 0)
+        : features.wallet === true
+          ? formatCurrency(d.saldo_dompet ?? 0)
+          : 'Sahriyah lunas',
       tone: sahriyahLunas ? 'finance' : 'memorization',
-    },
+    } : null,
   ];
   return items.filter(Boolean);
 }

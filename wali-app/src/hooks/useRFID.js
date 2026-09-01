@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { rfidApi } from '../api/rfid.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
 const PAGE_LIMIT = 20;
 
 export function useRFID(activeSantriId, enabled = true) {
+  const { activeUnitId } = useActiveChild();
   const [saldo, setSaldo] = useState(null);
   const [mutasi, setMutasi] = useState([]);
   const [total, setTotal] = useState(0);
@@ -19,7 +21,7 @@ export function useRFID(activeSantriId, enabled = true) {
 
   const fetchAll = useCallback(
     async ({ silent = false } = {}) => {
-      if (!activeSantriId || !enabled) return;
+      if (!activeSantriId || !activeUnitId || !enabled) return;
       const requestId = ++requestRef.current;
 
       if (!silent) setIsLoadingFirst(true);
@@ -47,13 +49,13 @@ export function useRFID(activeSantriId, enabled = true) {
         }
       }
     },
-    [activeSantriId, enabled]
+    [activeSantriId, activeUnitId, enabled]
   );
 
   const loadMore = useCallback(async () => {
     if (isFetchingMore.current) return;
     if (mutasi.length >= total) return; // Semua data sudah di-load
-    if (!activeSantriId || !enabled) return;
+    if (!activeSantriId || !activeUnitId || !enabled) return;
 
     isFetchingMore.current = true;
     const requestId = requestRef.current;
@@ -74,12 +76,13 @@ export function useRFID(activeSantriId, enabled = true) {
       setIsLoadingMore(false);
       isFetchingMore.current = false;
     }
-  }, [activeSantriId, enabled, mutasi.length, total]);
+  }, [activeSantriId, activeUnitId, enabled, mutasi.length, total]);
 
   const refresh = useCallback(() => fetchAll({ silent: true }), [fetchAll]);
 
   // Reset dan fetch ulang setiap kali santri aktif berganti
   useEffect(() => {
+    requestRef.current += 1;
     isFetchingMore.current = false;
     setSaldo(null);
     setMutasi([]);

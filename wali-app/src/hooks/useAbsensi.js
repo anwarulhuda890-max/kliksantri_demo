@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { absensiApi } from '../api/absensi.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
-export function useAbsensi(activeSantriId, bulan, tahun) {
+export function useAbsensi(activeSantriId, bulan, tahun, enabled = true) {
+  const { activeUnitId } = useActiveChild();
   const [ringkasan, setRingkasan] = useState(null);
   const [riwayat, setRiwayat] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -13,7 +15,7 @@ export function useAbsensi(activeSantriId, bulan, tahun) {
 
   const fetchAbsensi = useCallback(
     async ({ silent = false } = {}) => {
-      if (!activeSantriId) return;
+      if (!activeSantriId || !activeUnitId || !enabled) return;
 
       const reqId = ++reqRef.current;
 
@@ -39,16 +41,19 @@ export function useAbsensi(activeSantriId, bulan, tahun) {
         }
       }
     },
-    [activeSantriId, bulan, tahun]
+    [activeSantriId, activeUnitId, bulan, tahun, enabled]
   );
 
   // Reset dan fetch ulang saat santri atau bulan/tahun berubah
   useEffect(() => {
+    reqRef.current += 1;
     setRingkasan(null);
     setRiwayat([]);
     setError(null);
-    fetchAbsensi({ silent: false });
-  }, [fetchAbsensi]);
+    setIsLoading(false);
+    setIsRefreshing(false);
+    if (enabled) fetchAbsensi({ silent: false });
+  }, [enabled, fetchAbsensi]);
 
   return {
     ringkasan,

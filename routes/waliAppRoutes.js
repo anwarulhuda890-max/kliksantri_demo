@@ -34,33 +34,10 @@ const {
 const requireTenantFeature = require("../middleware/requireTenantFeature");
 const { isFeatureEnabled } = require("../services/tenantFeatureService");
 const { getEffectiveUnitFeatures } = require("../services/unitFeatureService");
+const { isUnitFeatureEnabled } = require("../services/unitFeatureService");
+const { buildWaliCapabilities } = require("../services/waliCapabilitiesService");
 
 const withWaliAuth = [waliAppAuthMiddleware, requireTenantFeature("wali_app")];
-
-function buildWaliFeatureConfig(features = [], unit = null) {
-  const featureMap = new Map(
-    features.map((feature) => [
-      feature.key,
-      feature.effective_enabled === true || feature.enabled === true,
-    ])
-  );
-  const enabled = (key) => featureMap.get(key) === true;
-  return {
-    absensi: enabled("absensi"),
-    nilai: enabled("nilai"),
-    hafalan: enabled("hafalan"),
-    perizinan: enabled("perizinan"),
-    pelanggaran: enabled("pelanggaran"),
-    kesehatan: enabled("kesehatan"),
-    sahriyah: enabled("sahriyah"),
-    rfid: enabled("rfid"),
-    pengumuman: enabled("pengumuman"),
-    unit_id: unit?.unit_id || null,
-    unit_kode: unit?.unit_kode || null,
-    unit_nama: unit?.unit_nama || null,
-    unit_type: unit?.unit_type || null,
-  };
-}
 
 function getYoutubeVideoId(url) {
   try {
@@ -317,26 +294,15 @@ router.post(
 
 );
 
-router.get("/features", ...withWaliAuth, async (req, res) => {
+router.get("/features", ...withWaliAuth, waliSantriGuard, requireWaliUnit, async (req, res) => {
   try {
-    const rawSantriId = Number(req.headers["x-santri-id"]);
-    const ownsChild = Number.isInteger(rawSantriId) && rawSantriId > 0
-      ? await waliAppService.ownsSantri(req.wali.nomor_hp, rawSantriId, req.wali.tenant_id)
-      : false;
-    const requestedUnitId = Number(req.headers["x-unit-id"]);
-    const unit = ownsChild
-      ? await waliAppService.getSantriUnit(
-          rawSantriId,
-          req.wali.tenant_id,
-          Number.isInteger(requestedUnitId) && requestedUnitId > 0 ? requestedUnitId : null,
-        )
-      : null;
-    const unitFeatures = unit
-      ? await getEffectiveUnitFeatures(req.wali.tenant_id, unit.unit_id)
-      : [];
+    const unitFeatures = await getEffectiveUnitFeatures(
+      req.wali.tenant_id,
+      req.waliUnit.unit_id,
+    );
     res.json({
       success: true,
-      data: buildWaliFeatureConfig(unitFeatures, unit),
+      data: buildWaliCapabilities(unitFeatures, req.waliUnit),
     });
   } catch (err) {
     console.error("[wali-app features]", err);
@@ -509,6 +475,13 @@ router.get(
 
     try {
 
+      const effectiveFeatures = await getEffectiveUnitFeatures(
+        tenantId,
+        req.waliUnit.unit_id
+      );
+      const capabilities = buildWaliCapabilities(effectiveFeatures, req.waliUnit);
+      const isEnabled = (key) => capabilities[key] === true;
+
       const santri =
         await pool.query(
 
@@ -570,8 +543,22 @@ router.get(
       const tahun =
         now.getFullYear();
 
-      const kehadiran =
-        await pool.query(
+      const emptyRows = { rows: [] };
+      const queryWhenEnabled = (featureKey, sql, params) =>
+        isEnabled(featureKey) ? pool.query(sql, params) : Promise.resolve(emptyRows);
+
+      const [
+        kehadiran,
+        sahriyahAktif,
+        izinAktif,
+        pelanggaranBulanIni,
+        kesehatanAktif,
+        hafalanBulanIni,
+        rataNilai,
+        statistikPesantren,
+      ] = await Promise.all([
+        queryWhenEnabled(
+          "absensi",
 
           `
           SELECT
@@ -582,16 +569,16 @@ router.get(
             COUNT(*) AS total
           FROM absensi
           WHERE santri_id = $1
-            AND EXTRACT(MONTH FROM tanggal::date) = $2
-            AND EXTRACT(YEAR FROM tanggal::date) = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND EXTRACT(MONTH FROM tanggal::date) = $4
+            AND EXTRACT(YEAR FROM tanggal::date) = $5
           `,
 
-          [santriId, bulan, tahun]
-
-        );
-
-      const sahriyahAktif =
-        await pool.query(
+          [santriId, tenantId, req.waliUnit.unit_id, bulan, tahun]
+        ),
+        queryWhenEnabled(
+          "sahriyah",
 
           `
           SELECT
@@ -605,46 +592,45 @@ router.get(
           FROM tagihan_sahriyah
           WHERE santri_id = $1
             AND tenant_id = $2
-            AND bulan = $3
-            AND tahun = $4
+            AND unit_id = $3
+            AND bulan = $4
+            AND tahun = $5
           LIMIT 1
           `,
 
-          [santriId, tenantId, bulan, tahun]
-
-        );
-
-      const izinAktif =
-        await pool.query(
+          [santriId, tenantId, req.waliUnit.unit_id, bulan, tahun]
+        ),
+        queryWhenEnabled(
+          "perizinan",
 
           `
           SELECT COUNT(*) AS total
           FROM perizinan
           WHERE santri_id = $1
+            AND tenant_id = $2
+            AND unit_id = $3
             AND status = 'keluar'
           `,
 
-          [santriId]
-
-        );
-
-      const pelanggaranBulanIni =
-        await pool.query(
+          [santriId, tenantId, req.waliUnit.unit_id]
+        ),
+        queryWhenEnabled(
+          "pelanggaran",
 
           `
           SELECT COUNT(*) AS total
           FROM pelanggaran
           WHERE santri_id = $1
-            AND EXTRACT(MONTH FROM tanggal::date) = $2
-            AND EXTRACT(YEAR FROM tanggal::date) = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND EXTRACT(MONTH FROM tanggal::date) = $4
+            AND EXTRACT(YEAR FROM tanggal::date) = $5
           `,
 
-          [santriId, bulan, tahun]
-
-        );
-
-      const kesehatanAktif =
-        await pool.query(
+          [santriId, tenantId, req.waliUnit.unit_id, bulan, tahun]
+        ),
+        queryWhenEnabled(
+          "kesehatan",
 
           `
           SELECT
@@ -663,25 +649,24 @@ router.get(
 
           [santriId, req.tenantId, req.waliUnit.unit_id]
 
-        );
-
-      const hafalanBulanIni =
-        await pool.query(
+        ),
+        queryWhenEnabled(
+          "hafalan",
 
           `
           SELECT COUNT(*) AS total
           FROM hafalan
           WHERE santri_id = $1
-            AND bulan = $2
-            AND tahun = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND bulan = $4
+            AND tahun = $5
           `,
 
-          [santriId, bulan, tahun]
-
-        );
-
-      const rataNilai =
-        await pool.query(
+          [santriId, tenantId, req.waliUnit.unit_id, bulan, tahun]
+        ),
+        queryWhenEnabled(
+          "nilai",
 
           `
           SELECT COALESCE(
@@ -690,16 +675,16 @@ router.get(
           ) AS rata
           FROM nilai_mingguan
           WHERE santri_id = $1
-            AND bulan = $2
-            AND tahun = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND bulan = $4
+            AND tahun = $5
           `,
 
-          [santriId, bulan, tahun]
-
-        );
-
-      const statistikPesantren =
-        await waliAppService.getStatistikPesantren(tenantId);
+          [santriId, tenantId, req.waliUnit.unit_id, bulan, tahun]
+        ),
+        waliAppService.getStatistikPesantren(tenantId, req.waliUnit.unit_id),
+      ]);
 
       const kHadir =
         Number(
@@ -726,13 +711,18 @@ router.get(
 
         data: {
 
-          profil: santri.rows[0],
+          profil: {
+            ...santri.rows[0],
+            saldo: isEnabled("wallet") ? Number(santri.rows[0].saldo || 0) : null,
+          },
+
+          capabilities,
 
           bulan,
 
           tahun,
 
-          kehadiran: {
+          kehadiran: isEnabled("absensi") ? {
 
             hadir: kHadir,
 
@@ -740,41 +730,44 @@ router.get(
 
             persentase: pctHadir
 
-          },
+          } : null,
 
           sahriyah_aktif:
-            sahriyahAktif.rows[0] || null,
+            isEnabled("sahriyah") ? (sahriyahAktif.rows[0] || null) : null,
+
+          saldo_dompet:
+            isEnabled("wallet") ? Number(santri.rows[0].saldo || 0) : null,
 
           saldo_rfid:
-            Number(
+            isEnabled("wallet") && isEnabled("rfid") ? Number(
               santri.rows[0].saldo || 0
-            ),
+            ) : null,
 
           izin_aktif:
-            Number(
+            isEnabled("perizinan") ? Number(
               izinAktif.rows[0]?.total || 0
-            ),
+            ) : null,
 
           pelanggaran_bulan_ini:
-            Number(
+            isEnabled("pelanggaran") ? Number(
               pelanggaranBulanIni.rows[0]?.total || 0
-            ),
+            ) : null,
 
           kesehatan_aktif:
-            kesehatanAktif.rows[0] || {
+            isEnabled("kesehatan") ? (kesehatanAktif.rows[0] || {
               status_kesehatan: "sehat",
               status_penanganan: "observasi",
-            },
+            }) : null,
 
           hafalan_bulan_ini:
-            Number(
+            isEnabled("hafalan") ? Number(
               hafalanBulanIni.rows[0]?.total || 0
-            ),
+            ) : null,
 
           rata_nilai_bulan_ini:
-            Number(
+            isEnabled("nilai") ? Number(
               rataNilai.rows[0]?.rata || 0
-            ),
+            ) : null,
 
           statistik_pesantren: statistikPesantren,
 
@@ -1161,7 +1154,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requireWaliUnitFeature("rfid"),
+  requireWaliUnitFeature("wallet"),
 
   async (req, res) => {
 
@@ -1208,6 +1201,11 @@ router.get(
       }
 
       const row = result.rows[0];
+      const rfidEnabled = await isUnitFeatureEnabled(
+        req.tenantId,
+        req.waliUnit.unit_id,
+        "rfid",
+      );
 
       res.json({
 
@@ -1219,7 +1217,7 @@ router.get(
 
           nama: row.nama,
 
-          uid_rfid: row.uid_rfid,
+          uid_rfid: rfidEnabled ? row.uid_rfid : null,
 
           saldo: Number(
             row.saldo || 0
@@ -1229,8 +1227,8 @@ router.get(
             row.limit_harian || 0
           ),
 
-          kartu_aktif:
-            row.uid_rfid !== null
+          kartu_aktif: rfidEnabled ? row.uid_rfid !== null : null,
+          rfid_enabled: rfidEnabled,
 
         }
 
@@ -1267,7 +1265,7 @@ router.get(
   ...withWaliAuth,
 
   waliSantriGuard,
-  requireWaliUnitFeature("rfid"),
+  requireWaliUnitFeature("wallet"),
 
   async (req, res) => {
 
@@ -1451,12 +1449,14 @@ router.get(
             pekan
           FROM hafalan
           WHERE santri_id = $1
-            AND bulan = $2
-            AND tahun = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND bulan = $4
+            AND tahun = $5
           ORDER BY pekan ASC, tanggal ASC
           `,
 
-          [santriId, bulan, tahun]
+          [santriId, req.tenantId, req.waliUnit.unit_id, bulan, tahun]
 
         );
 
@@ -1469,11 +1469,13 @@ router.get(
             COUNT(DISTINCT pekan)            AS total_pekan
           FROM hafalan
           WHERE santri_id = $1
-            AND bulan = $2
-            AND tahun = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND bulan = $4
+            AND tahun = $5
           `,
 
-          [santriId, bulan, tahun]
+          [santriId, req.tenantId, req.waliUnit.unit_id, bulan, tahun]
 
         );
 
@@ -1598,12 +1600,14 @@ router.get(
             tahun
           FROM nilai_mingguan
           WHERE santri_id = $1
-            AND bulan = $2
-            AND tahun = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND bulan = $4
+            AND tahun = $5
           ORDER BY tanggal DESC, mapel ASC
           `,
 
-          [santriId, bulan, tahun]
+          [santriId, req.tenantId, req.waliUnit.unit_id, bulan, tahun]
 
         );
 
@@ -1618,11 +1622,13 @@ router.get(
             COALESCE(MIN(nilai::numeric), 0)             AS nilai_terendah
           FROM nilai_mingguan
           WHERE santri_id = $1
-            AND bulan = $2
-            AND tahun = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND bulan = $4
+            AND tahun = $5
           `,
 
-          [santriId, bulan, tahun]
+          [santriId, req.tenantId, req.waliUnit.unit_id, bulan, tahun]
 
         );
 
@@ -1707,11 +1713,11 @@ router.get(
             created_at,
             updated_at
           FROM kesehatan_santri
-          WHERE santri_id = $1
+          WHERE santri_id = $1 AND tenant_id = $2 AND unit_id = $3
           ORDER BY created_at ASC
           `,
 
-          [santriId]
+          [santriId, req.tenantId, req.waliUnit.unit_id]
 
         );
 
@@ -2118,11 +2124,13 @@ router.get(
             COUNT(*) AS total
           FROM absensi
           WHERE santri_id = $1
-            AND EXTRACT(MONTH FROM tanggal::date) = $2
-            AND EXTRACT(YEAR  FROM tanggal::date) = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND EXTRACT(MONTH FROM tanggal::date) = $4
+            AND EXTRACT(YEAR  FROM tanggal::date) = $5
           `,
 
-          [santriId, bulan, tahun]
+          [santriId, req.tenantId, req.waliUnit.unit_id, bulan, tahun]
 
         );
 
@@ -2141,12 +2149,14 @@ router.get(
             status
           FROM absensi
           WHERE santri_id = $1
-            AND EXTRACT(MONTH FROM tanggal::date) = $2
-            AND EXTRACT(YEAR  FROM tanggal::date) = $3
+            AND tenant_id = $2
+            AND unit_id = $3
+            AND EXTRACT(MONTH FROM tanggal::date) = $4
+            AND EXTRACT(YEAR  FROM tanggal::date) = $5
           ORDER BY tanggal ASC, sesi ASC
           `,
 
-          [santriId, bulan, tahun]
+          [santriId, req.tenantId, req.waliUnit.unit_id, bulan, tahun]
 
         );
 

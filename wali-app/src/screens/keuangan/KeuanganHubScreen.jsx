@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useActiveChild } from '../../context/ActiveChildContext';
+import { useWaliFeatures } from '../../hooks/useWaliFeatures';
 import { ChildSwitcherBar } from '../../components/dashboard/ChildSwitcherBar';
 import { colors } from '../../constants/colors';
 
@@ -34,6 +35,7 @@ function MenuCard({ icon, title, subtitle, onPress, accentColor }) {
 export function KeuanganHubScreen() {
   const navigation = useNavigation();
   const { activeChild } = useActiveChild();
+  const { features } = useWaliFeatures(activeChild);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -52,21 +54,21 @@ export function KeuanganHubScreen() {
 
         <Text style={styles.sectionLabel}>Pilih Modul Keuangan</Text>
 
-        <MenuCard
+        {features.wallet === true ? <MenuCard
           icon="💳"
-          title="Saldo & Mutasi RFID"
-          subtitle="Lihat saldo kartu dan riwayat transaksi"
+          title={features.rfid === true ? 'Dompet & RFID' : 'Dompet Santri'}
+          subtitle={features.rfid === true ? 'Lihat saldo, kartu, dan riwayat transaksi' : 'Lihat saldo dan riwayat transaksi'}
           accentColor={colors.primary}
           onPress={() => navigation.navigate('RFID')}
-        />
+        /> : null}
 
-        <MenuCard
+        {features.sahriyah === true ? <MenuCard
           icon="📋"
           title="Sahriyah"
           subtitle="Status tagihan bulanan dan riwayat pembayaran"
           accentColor={colors.secondary}
           onPress={() => navigation.navigate('Sahriyah')}
-        />
+        /> : null}
       </ScrollView>
     </SafeAreaView>
   );

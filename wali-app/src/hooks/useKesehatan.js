@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { kesehatanApi } from '../api/kesehatan.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
 export function useKesehatan(activeSantriId) {
+  const { activeUnitId } = useActiveChild();
   const [current, setCurrent] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -10,7 +12,7 @@ export function useKesehatan(activeSantriId) {
   const reqRef = useRef(0);
 
   const fetchKesehatan = useCallback(async ({ silent = false } = {}) => {
-    if (!activeSantriId) return;
+    if (!activeSantriId || !activeUnitId) return;
 
     const reqId = ++reqRef.current;
     if (!silent) setIsLoading(true);
@@ -29,9 +31,10 @@ export function useKesehatan(activeSantriId) {
         setIsLoading(false);
       }
     }
-  }, [activeSantriId]);
+  }, [activeSantriId, activeUnitId]);
 
   useEffect(() => {
+    reqRef.current += 1;
     setCurrent(null);
     setTimeline([]);
     setError(null);

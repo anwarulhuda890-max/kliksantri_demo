@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { santriApi } from '../api/santri.api';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useActiveChild } from '../context/ActiveChildContext';
 
 export function useDashboard(activeSantriId) {
+  const { activeUnitId } = useActiveChild();
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const requestRef = useRef(0);
 
   const fetchDashboard = useCallback(async () => {
-    if (!activeSantriId) return;
+    if (!activeSantriId || !activeUnitId) return;
     const requestId = ++requestRef.current;
 
     setIsLoading(true);
@@ -26,10 +28,11 @@ export function useDashboard(activeSantriId) {
     } finally {
       if (requestId === requestRef.current) setIsLoading(false);
     }
-  }, [activeSantriId]);
+  }, [activeSantriId, activeUnitId]);
 
   // Fetch ulang setiap kali santri aktif berganti
   useEffect(() => {
+    requestRef.current += 1;
     setData(null);
     fetchDashboard();
   }, [fetchDashboard]);

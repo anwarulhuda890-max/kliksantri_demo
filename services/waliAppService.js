@@ -361,29 +361,34 @@ const buildLoginResponse = async (akun, tenant) => {
   };
 };
 
-/** Tenant-wide pesantren stats for wali dashboard hero strip. */
-async function getStatistikPesantren(tenantId) {
+/** Selected-unit stats for the active child dashboard hero strip. */
+async function getStatistikPesantren(tenantId, unitId) {
   const { rows } = await pool.query(
     `
     SELECT
       (
         SELECT COUNT(*)::int
-        FROM santri
+        FROM santri_units
         WHERE tenant_id = $1
-          AND LOWER(TRIM(COALESCE(status, 'aktif'))) = 'aktif'
+          AND unit_id = $2
+          AND status = 'active'
+          AND left_at IS NULL
       ) AS total_santri_aktif,
       (
         SELECT COUNT(*)::int
-        FROM guru
+        FROM guru_units
         WHERE tenant_id = $1
+          AND unit_id = $2
+          AND status = 'active'
       ) AS total_guru,
       (
         SELECT COUNT(*)::int
         FROM kelas
         WHERE tenant_id = $1
+          AND unit_id = $2
       ) AS total_kelas
     `,
-    [tenantId]
+    [tenantId, unitId]
   );
 
   const row = rows[0] || {};

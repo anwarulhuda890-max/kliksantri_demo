@@ -5,14 +5,14 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import { colors } from '../../constants/colors';
 import { spacing } from '../../constants/theme';
 
-export function KeuanganSummaryStrip({ saldo = 0, tagihanAktif, tagihanStatus = 'Lunas' }) {
+export function KeuanganSummaryStrip({ saldo = 0, tagihanAktif, tagihanStatus = 'Lunas', showSahriyah, showWallet, rfidEnabled }) {
   const amount = tagihanAktif?.sisa_tagihan ?? 0;
   const hasTagihan = tagihanAktif != null;
 
   return (
     <AppCard padding="md" style={styles.card}>
       <View style={styles.row}>
-        <View style={styles.col}>
+        {showSahriyah ? <View style={styles.col}>
           <AppText variant="caption" color="muted" numberOfLines={1}>
             Tagihan Aktif
           </AppText>
@@ -22,18 +22,18 @@ export function KeuanganSummaryStrip({ saldo = 0, tagihanAktif, tagihanStatus = 
           <StatusBadge status={tagihanStatus} size="sm">
             {tagihanStatus}
           </StatusBadge>
-        </View>
+        </View> : null}
 
-        <View style={styles.divider} />
+        {showSahriyah && showWallet ? <View style={styles.divider} /> : null}
 
-        <View style={styles.col}>
+        {showWallet ? <View style={styles.col}>
           <AppText variant="caption" color="muted" numberOfLines={1}>
-            Saldo RFID
+            {rfidEnabled ? 'Saldo Dompet & RFID' : 'Saldo Dompet'}
           </AppText>
           <AppText variant="bodyMedium" numberOfLines={1}>
             {formatCurrency(saldo)}
           </AppText>
-        </View>
+        </View> : null}
       </View>
     </AppCard>
   );

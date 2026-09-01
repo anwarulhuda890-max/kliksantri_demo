@@ -12,6 +12,9 @@ import { KeuanganStack } from './KeuanganStack';
 import { ProfilStack } from './ProfilStack';
 import { AnakPilihScreen } from '../screens/anak/AnakPilihScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
+import { useActiveChild } from '../context/ActiveChildContext';
+import { useWaliFeatures } from '../hooks/useWaliFeatures';
+import { FINANCE_FEATURE_KEYS, MONITORING_FEATURE_KEYS, hasAnyFeature } from '../utils/unitFeatures';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -62,10 +65,14 @@ function MainStack() {
 function MainTabsInner() {
   const insets = useSafeAreaInsets();
   const tabOptions = buildTabBarScreenOptions(insets);
+  const { activeChild } = useActiveChild();
+  const { features } = useWaliFeatures(activeChild);
+  const showMonitoring = hasAnyFeature(features, MONITORING_FEATURE_KEYS);
+  const showKeuangan = hasAnyFeature(features, FINANCE_FEATURE_KEYS);
 
   return (
     <Tab.Navigator screenOptions={tabOptions}>
-      <Tab.Screen
+      {features.pengumuman === true ? <Tab.Screen
         name="Beranda"
         component={DashboardScreen}
         options={{
@@ -73,8 +80,8 @@ function MainTabsInner() {
           tabBarIcon: tabIcon('Beranda'),
           headerShown: false,
         }}
-      />
-      <Tab.Screen
+      /> : null}
+      {showMonitoring ? <Tab.Screen
         name="Pengumuman"
         component={PengumumanStack}
         options={{
@@ -82,8 +89,8 @@ function MainTabsInner() {
           tabBarIcon: tabIcon('Pengumuman'),
           headerShown: false,
         }}
-      />
-      <Tab.Screen
+      /> : null}
+      {showKeuangan ? <Tab.Screen
         name="Monitoring"
         component={MonitoringStack}
         options={{
@@ -91,7 +98,7 @@ function MainTabsInner() {
           tabBarIcon: tabIcon('Monitoring'),
           headerShown: false,
         }}
-      />
+      /> : null}
       <Tab.Screen
         name="Keuangan"
         component={KeuanganStack}

@@ -23,12 +23,12 @@ export function MonitoringStack() {
         component={MonitoringScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="Absensi" component={AbsensiScreen} options={{ title: 'Absensi' }} />
-      <Stack.Screen name="Nilai" component={NilaiScreen} options={{ title: 'Nilai Akademik' }} />
-      {features.hafalan ? <Stack.Screen name="Hafalan" component={HafalanScreen} options={{ title: 'Hafalan' }} /> : null}
-      {features.perizinan ? <Stack.Screen name="Perizinan" component={PerizinanScreen} options={{ title: 'Riwayat Izin' }} /> : null}
-      {features.pelanggaran ? <Stack.Screen name="Pelanggaran" component={PelanggaranScreen} options={{ title: 'Pelanggaran' }} /> : null}
-      {features.kesehatan ? <Stack.Screen name="Kesehatan" component={KesehatanScreen} options={{ title: 'Kesehatan' }} /> : null}
+      {features.absensi === true ? <Stack.Screen name="Absensi" component={AbsensiScreen} options={{ title: 'Absensi' }} /> : null}
+      {features.nilai === true ? <Stack.Screen name="Nilai" component={NilaiScreen} options={{ title: 'Nilai Akademik' }} /> : null}
+      {features.hafalan === true ? <Stack.Screen name="Hafalan" component={HafalanScreen} options={{ title: 'Hafalan' }} /> : null}
+      {features.perizinan === true ? <Stack.Screen name="Perizinan" component={PerizinanScreen} options={{ title: 'Riwayat Izin' }} /> : null}
+      {features.pelanggaran === true ? <Stack.Screen name="Pelanggaran" component={PelanggaranScreen} options={{ title: 'Pelanggaran' }} /> : null}
+      {features.kesehatan === true ? <Stack.Screen name="Kesehatan" component={KesehatanScreen} options={{ title: 'Kesehatan' }} /> : null}
     </Stack.Navigator>
   );
 }

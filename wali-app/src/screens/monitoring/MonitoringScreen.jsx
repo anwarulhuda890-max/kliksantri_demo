@@ -78,15 +78,15 @@ export function MonitoringScreen() {
   const bulan = now.getMonth() + 1;
   const tahun = now.getFullYear();
 
-  const absensi = useAbsensi(activeSantriId, bulan, tahun);
-  const nilai = useNilai(activeSantriId, bulan, tahun);
-  const hafalan = useHafalan(activeSantriId, bulan, tahun);
-  const perizinan = usePerizinan(activeSantriId);
-  const pelanggaran = usePelanggaran(activeSantriId);
+  const absensi = useAbsensi(activeSantriId, bulan, tahun, features.absensi === true);
+  const nilai = useNilai(activeSantriId, bulan, tahun, features.nilai === true);
+  const hafalan = useHafalan(activeSantriId, bulan, tahun, features.hafalan === true);
+  const perizinan = usePerizinan(activeSantriId, features.perizinan === true);
+  const pelanggaran = usePelanggaran(activeSantriId, features.pelanggaran === true);
 
   const loading =
-    (absensi.isLoading && !absensi.riwayat.length) ||
-    (nilai.isLoading && !nilai.data.length);
+    (features.absensi === true && absensi.isLoading && !absensi.riwayat.length) ||
+    (features.nilai === true && nilai.isLoading && !nilai.data.length);
 
   const refreshing =
     absensi.isRefreshing ||
@@ -96,11 +96,11 @@ export function MonitoringScreen() {
     pelanggaran.isRefreshing;
 
   function refreshAll() {
-    absensi.refresh();
-    nilai.refresh();
-    hafalan.refresh();
-    perizinan.refresh();
-    pelanggaran.refresh();
+    if (features.absensi === true) absensi.refresh();
+    if (features.nilai === true) nilai.refresh();
+    if (features.hafalan === true) hafalan.refresh();
+    if (features.perizinan === true) perizinan.refresh();
+    if (features.pelanggaran === true) pelanggaran.refresh();
   }
 
   if (!activeSantriId) {
@@ -143,9 +143,11 @@ export function MonitoringScreen() {
           />
         }
       >
-        <SectionHeading title="Kehadiran & Akademik" />
+        {(features.absensi === true || features.nilai === true || features.hafalan === true)
+          ? <SectionHeading title="Kehadiran & Akademik" />
+          : null}
 
-        <SectionBlock
+        {features.absensi === true ? <SectionBlock
           title="Kehadiran"
           onLihatSemua={() => navigation.navigate('Absensi')}
           isEmpty={absensiLatest.length === 0}
@@ -160,71 +162,74 @@ export function MonitoringScreen() {
               badge={row.status}
             />
           ))}
-        </SectionBlock>
+        </SectionBlock> : null}
 
-        <SectionBlock
+        {(features.nilai === true || features.hafalan === true) ? <SectionBlock
           title="Akademik"
-          onLihatSemua={() => navigation.navigate('Nilai')}
+          onLihatSemua={() => navigation.navigate(features.nilai === true ? 'Nilai' : 'Hafalan')}
           isEmpty={nilaiLatest.length === 0 && hafalanLatest.length === 0}
           emptyTitle="Belum ada data akademik"
           emptyDesc="Nilai dan hafalan akan muncul di sini."
         >
-          {nilaiLatest.map((row, i) => (
+          {features.nilai === true ? nilaiLatest.map((row, i) => (
             <MiniRow
               key={`n-${row.id ?? i}`}
               label={row.mata_pelajaran ?? 'Nilai'}
               value={`Nilai: ${row.nilai ?? '-'}`}
             />
-          ))}
-          {features.hafalan ? hafalanLatest.map((row, i) => (
+          )) : null}
+          {features.hafalan === true ? hafalanLatest.map((row, i) => (
             <MiniRow
               key={`h-${row.id ?? i}`}
               label={row.kitab ?? 'Hafalan'}
               value={row.surat ?? row.keterangan}
             />
           )) : null}
-        </SectionBlock>
+        </SectionBlock> : null}
 
-        {features.perizinan || features.pelanggaran ? <SectionBlock
+        {features.perizinan === true || features.pelanggaran === true ? <SectionBlock
           title="Disiplin"
-          onLihatSemua={() => navigation.navigate('Perizinan')}
+          onLihatSemua={() => navigation.navigate(features.perizinan === true ? 'Perizinan' : 'Pelanggaran')}
           isEmpty={izinLatest.length === 0 && pelLatest.length === 0}
           emptyTitle="Tidak ada catatan"
           emptyDesc="Perizinan dan pelanggaran akan muncul di sini."
         >
-          {izinLatest.map((row, i) => (
+          {features.perizinan === true ? izinLatest.map((row, i) => (
             <MiniRow
               key={`i-${row.id ?? i}`}
               label="Izin keluar"
               value={formatDate(row.tanggal_keluar ?? row.created_at)}
               badge={row.status}
             />
-          ))}
-          {pelLatest.map((row, i) => (
+          )) : null}
+          {features.pelanggaran === true ? pelLatest.map((row, i) => (
             <MiniRow
               key={`p-${row.id ?? i}`}
               label={row.jenis ?? 'Pelanggaran'}
               value={formatDate(row.tanggal)}
               badge={row.tindakan}
             />
-          ))}
+          )) : null}
         </SectionBlock> : null}
 
         <View style={styles.navRow}>
-          <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Absensi')}>
+          {features.absensi === true ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Absensi')}>
             <AppText variant="caption" color="brand">Absensi</AppText>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Nilai')}>
+          </TouchableOpacity> : null}
+          {features.nilai === true ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Nilai')}>
             <AppText variant="caption" color="brand">Nilai</AppText>
-          </TouchableOpacity>
-          {features.hafalan ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Hafalan')}>
+          </TouchableOpacity> : null}
+          {features.hafalan === true ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Hafalan')}>
             <AppText variant="caption" color="brand">Hafalan</AppText>
           </TouchableOpacity> : null}
-          {features.perizinan ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Perizinan')}>
+          {features.perizinan === true ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Perizinan')}>
             <AppText variant="caption" color="brand">Perizinan</AppText>
           </TouchableOpacity> : null}
-          {features.pelanggaran ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Pelanggaran')}>
+          {features.pelanggaran === true ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Pelanggaran')}>
             <AppText variant="caption" color="brand">Pelanggaran</AppText>
+          </TouchableOpacity> : null}
+          {features.kesehatan === true ? <TouchableOpacity style={styles.navChip} onPress={() => navigation.navigate('Kesehatan')}>
+            <AppText variant="caption" color="brand">Kesehatan</AppText>
           </TouchableOpacity> : null}
         </View>
       </ScrollView>
