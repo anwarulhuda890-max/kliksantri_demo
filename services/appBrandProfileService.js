@@ -73,7 +73,7 @@ async function getResolvedTenantProfile(tenantId, db = pool) {
 
 async function getBuildProfile(brandKey, { publicOnly = false } = {}, db = pool) {
   const params = [sanitizeBrandKey(brandKey)];
-  const statusClause = publicOnly ? " AND status IN ('BUILD_READY', 'PUBLISHED')" : '';
+  const statusClause = publicOnly ? " AND bp.status IN ('BUILD_READY', 'PUBLISHED')" : '';
   const { rows } = await db.query(
     `SELECT bp.*, t.slug AS tenant_slug
      FROM app_brand_profiles bp
