@@ -1,6 +1,18 @@
-# White-Label Assets — Wali App
+# White-Label Build — WaliSantri
 
-Panduan mengganti branding visual pesantren tanpa mengubah mekanisme build Expo.
+Satu source Wali App menghasilkan build universal atau dedicated white-label. Jangan mengganti source/asset secara manual per customer.
+
+## Commands
+
+Universal config smoke:
+
+`npm run build:android -- --brand=universal --config-only`
+
+White-label config smoke:
+
+`npm run build:android -- --brand=anwarulhuda --profile-file=./brands/anwarulhuda.test.json --config-only`
+
+Release APK/AAB memakai command yang sama tanpa `--config-only`, dengan `--firebase=<path>` dan profile EAS. Script memvalidasi bahwa package di Firebase JSON sama persis dengan package Brand Profile sebelum build dimulai.
 
 ## App Icon (launcher)
 
@@ -11,7 +23,7 @@ Panduan mengganti branding visual pesantren tanpa mengubah mekanisme build Expo.
 | `assets/android-icon-background.png` | Android adaptive icon background |
 | `assets/android-icon-monochrome.png` | Android 13+ monochrome icon |
 
-**Langkah:** Ganti file di atas dengan logo pesantren (PNG, transparan untuk foreground).
+Asset final berasal dari Brand Profile yang dikelola Platform. File fixture Anwarul Huda hanya untuk config smoke dan bukan logo final publikasi.
 
 Konfigurasi: `app.json` → `expo.icon` dan `expo.android.adaptiveIcon`.
 
@@ -34,13 +46,19 @@ Konfigurasi: `app.json` → `plugins.expo-splash-screen`.
 
 ## Display name (store)
 
-`app.json` → `expo.name` — ubah ke nama pesantren saat publish (contoh: `"Wali Santri Al-Hikmah"`).
+`app.config.js` menyelesaikan nama, package, asset, warna, version, dan tenant binding dari Brand Profile build.
 
-Bundle ID Android dan iOS final adalah `com.klikpesantren.wali`. Scheme deep link tetap `klikpesantren-wali`.
+Universal mempertahankan package existing `com.klikpesantren.wali` agar upgrade APK lama tidak putus. Dedicated package memakai format `com.klikpesantren.<brand_key>.wali` dan immutable setelah `PUBLISHED`.
 
 ## Runtime branding (tanpa rebuild)
 
-Logo, splash, tagline, banner & tentang pesantren diatur admin via **Profil Pesantren → Branding Aplikasi**, disimpan ke cache `pesantren_branding` setelah login Wali.
+White-label build config hanya dikelola Platform. Tenant branding operasional tetap dapat dipakai sebagai konten tenant, tetapi tidak dapat mengubah package/signing/build identity.
+
+`Powered by KlikPesantren` selalu dipaksa oleh resolver. Build command membuat komposisi splash PNG dengan attribution; field untuk mematikannya tidak tersedia.
+
+## Firebase provisioning
+
+Setiap package dedicated wajib didaftarkan sebagai Android app tersendiri di Firebase. Simpan hanya `firebase_config_ref` di Brand Profile; simpan file JSON sebagai secret/artifact build eksternal. Jangan commit service-account/private key. Brand baru belum boleh dinaikkan ke `BUILD_READY` sebelum config package-matched tersedia.
 
 Urutan logo:
 1. `splash_logo_url` (splash & login)

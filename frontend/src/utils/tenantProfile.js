@@ -8,9 +8,9 @@ export const TENANT_FALLBACKS = {
 };
 
 export const KLIKPESANTREN_LOGIN_BRANDING = {
-  name: "KlikPesantren",
-  address: "Administrasi Pesantren Digital",
-  tagline: "Sistem Administrasi Pesantren Modern",
+  name: "KhodimulMa'had",
+  address: "Admin Pesantren",
+  tagline: "Powered by KlikPesantren",
   logo: null,
 };
 
@@ -111,6 +111,8 @@ export function resolvePublicTenantDisplay(publicProfile) {
     tagline:
       publicProfile.tagline?.trim() ||
       "Sistem Administrasi Pesantren Modern",
+    primary_color: publicProfile.primary_color || null,
+    powered_by_klikpesantren: true,
     hasCustomName: Boolean(publicProfile.nama?.trim()),
     service_available: publicProfile.service_available !== false,
     status: publicProfile.status,

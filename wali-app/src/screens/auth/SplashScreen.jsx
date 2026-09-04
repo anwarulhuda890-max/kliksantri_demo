@@ -9,12 +9,17 @@ import {
   resolveBrandingName,
   resolveSplashLogoUrl,
 } from '../../utils/branding';
+import { BUILD_BRAND, IS_WHITE_LABEL } from '../../config/buildBrand';
 
 export function SplashScreen() {
   const [branding, setBranding] = useState(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    if (IS_WHITE_LABEL) {
+      setReady(true);
+      return;
+    }
     storage
       .getPesantrenBranding()
       .then((cached) => {
@@ -24,8 +29,8 @@ export function SplashScreen() {
       .finally(() => setReady(true));
   }, []);
 
-  const displayName = resolveBrandingName(branding);
-  const splashLogo = resolveSplashLogoUrl(branding);
+  const displayName = IS_WHITE_LABEL ? BUILD_BRAND.appName : (branding ? resolveBrandingName(branding) : BUILD_BRAND.appName);
+  const splashLogo = IS_WHITE_LABEL ? BUILD_BRAND.logoUrl : resolveSplashLogoUrl(branding);
 
   return (
     <View style={styles.container}>
@@ -40,6 +45,9 @@ export function SplashScreen() {
       <ActivityIndicator size="large" color={colors.primary} style={styles.spinner} />
       <AppText variant="caption" color="muted" style={styles.loadingText}>
         Memuat sesi...
+      </AppText>
+      <AppText variant="caption" color="muted" style={styles.poweredBy}>
+        Powered by KlikPesantren
       </AppText>
     </View>
   );
@@ -68,5 +76,11 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.sm,
+  },
+  poweredBy: {
+    position: 'absolute',
+    bottom: spacing['2xl'],
+    fontSize: 11,
+    opacity: 0.75,
   },
 });

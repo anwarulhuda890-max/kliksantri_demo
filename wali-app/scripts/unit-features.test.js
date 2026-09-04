@@ -204,9 +204,9 @@ test('cross-family child selection returns 403', async () => {
   }
 });
 
-test('public app branding and API URL use KlikPesantren', () => {
+test('universal app is WaliSantri and keeps canonical KlikPesantren API', () => {
   const appConfig = JSON.parse(fs.readFileSync(path.join(appRoot, 'app.json'), 'utf8'));
   const easConfig = fs.readFileSync(path.join(appRoot, 'eas.json'), 'utf8');
-  assert.equal(appConfig.expo.name, 'KlikPesantren');
+  assert.equal(appConfig.expo.name, 'WaliSantri');
   assert.match(easConfig, /https:\/\/api\.klikpesantren\.com/);
 });

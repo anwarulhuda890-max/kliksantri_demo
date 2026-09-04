@@ -11,6 +11,7 @@ import {
 } from '../../components/ui';
 import { spacing } from '../../constants/theme';
 import { colors } from '../../constants/colors';
+import { BUILD_BRAND } from '../../config/buildBrand';
 
 export function TentangAplikasiScreen() {
   const navigation = useNavigation();
@@ -25,13 +26,19 @@ export function TentangAplikasiScreen() {
         <AppCard padding="lg" style={styles.card}>
           <AppText variant="h2">{namaPesantren}</AppText>
           <AppText variant="caption" color="muted">
-            Portal Wali Santri · Versi {appVersion}
+            {BUILD_BRAND.appName} · Versi {appVersion}
           </AppText>
           <View style={styles.divider} />
           <AppText variant="body" color="secondary">
             Aplikasi resmi untuk wali santri. Pantau kehadiran, akademik, keuangan,
             dan pengumuman pesantren dalam satu tempat.
           </AppText>
+          <View style={styles.attribution}>
+            <AppText variant="label">Powered by KlikPesantren</AppText>
+            <AppText variant="caption" color="muted">
+              Teknologi administrasi pesantren oleh KlikPesantren.
+            </AppText>
+          </View>
           <AppButton
             variant="outline"
             fullWidth
@@ -60,5 +67,11 @@ const styles = StyleSheet.create({
   },
   btn: {
     marginTop: spacing.lg,
+  },
+  attribution: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
   },
 });

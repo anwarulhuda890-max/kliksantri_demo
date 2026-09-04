@@ -30,6 +30,7 @@ const pushNotificationService =
 const {
   resolveTenantForLogin,
 } = require("../services/tenantService");
+const { getWhiteLabelTenantSlug } = require("../services/appBrandProfileService");
 
 const requireTenantFeature = require("../middleware/requireTenantFeature");
 const { isFeatureEnabled } = require("../services/tenantFeatureService");
@@ -78,14 +79,23 @@ router.post(
       const {
 
         tenant_slug,
+        brand_key,
         nomor_hp,
         pin
 
       } = req.body;
 
+      const resolvedTenantSlug = brand_key && brand_key !== "universal"
+        ? await getWhiteLabelTenantSlug(brand_key)
+        : tenant_slug;
+
+      if (brand_key && brand_key !== "universal" && !resolvedTenantSlug) {
+        return res.status(404).json({ success: false, error: "Brand aplikasi tidak aktif", code: "BRAND_NOT_AVAILABLE" });
+      }
+
       const tenantResult =
         await resolveTenantForLogin(
-          tenant_slug
+          resolvedTenantSlug
         );
 
       if (tenantResult.error) {

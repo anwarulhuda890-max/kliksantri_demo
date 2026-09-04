@@ -12,6 +12,7 @@ import { TENANT_PACKAGES } from "../../constants/tenantPackages";
 import { formatCurrency } from "../../utils/formatCurrency";
 import { formatDateShort } from "../../utils/formatDate";
 import { openTenantAdminPortal } from "../../utils/tenantPortal";
+import BrandProfilePanel from "../../components/platform/BrandProfilePanel";
 
 const APPLY_PACKAGE_OPTIONS = TENANT_PACKAGES;
 
@@ -629,6 +630,13 @@ function PlatformTenantDetailPage() {
           </PlatformButton>
         </div>
       </div>
+
+      <BrandProfilePanel
+        tenantId={id}
+        tenantName={tenantDisplayName(info)}
+        tenantSlug={info.slug}
+        tenantDomain={tenantDomain}
+      />
 
       <div style={{ marginBottom: 20 }}>
         <Card padding="md" shadow="card" radius="xl">

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "KlikPesantren",
+    "name": "WaliSantri",
     "owner": "kliksantridemo",
     "slug": "kliksantri-wali",
     "version": "1.0.0",
@@ -15,7 +15,7 @@
         {
           "backgroundColor": "#FFFFFF",
           "image": "./assets/splash-icon.png",
-          "imageWidth": 360
+          "imageWidth": 200
         }
       ],
       [
@@ -56,7 +56,7 @@
     "android": {
       "package": "com.klikpesantren.wali",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 3,
+      "versionCode": 7,
       "predictiveBackGestureEnabled": true,
       "permissions": [
         "android.permission.INTERNET",

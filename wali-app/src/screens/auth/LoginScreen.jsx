@@ -30,6 +30,7 @@ import {
   resolveBrandingTagline,
   resolveLoginLogoUrl,
 } from '../../utils/branding';
+import { BUILD_BRAND, IS_WHITE_LABEL } from '../../config/buildBrand';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 const DEFAULT_TAGLINE = 'Portal Wali Santri';
@@ -67,15 +68,17 @@ export function LoginScreen() {
   const loginInFlightRef = useRef(false);
 
   useEffect(() => {
-    storage.getPesantrenBranding().then(setBranding).catch(() => {});
-    storage.getTenantSlug().then((slug) => {
-      if (slug) setTenantSlug(slug);
-    }).catch(() => {});
+    if (!IS_WHITE_LABEL) {
+      storage.getPesantrenBranding().then(setBranding).catch(() => {});
+      storage.getTenantSlug().then((slug) => {
+        if (slug) setTenantSlug(slug);
+      }).catch(() => {});
+    }
   }, []);
 
-  const namaPesantren = resolveBrandingName(branding);
-  const tagline = resolveBrandingTagline(branding, DEFAULT_TAGLINE);
-  const loginLogo = resolveLoginLogoUrl(branding);
+  const namaPesantren = IS_WHITE_LABEL ? BUILD_BRAND.appName : (branding ? resolveBrandingName(branding) : BUILD_BRAND.appName);
+  const tagline = IS_WHITE_LABEL ? BUILD_BRAND.slogan : (branding ? resolveBrandingTagline(branding, BUILD_BRAND.slogan || DEFAULT_TAGLINE) : BUILD_BRAND.slogan);
+  const loginLogo = IS_WHITE_LABEL ? BUILD_BRAND.logoUrl : resolveLoginLogoUrl(branding);
 
   function handlePhoneChange(text) {
     setNomorHp(text.replace(/[^0-9]/g, ''));
@@ -100,7 +103,7 @@ export function LoginScreen() {
       return;
     }
 
-    if (!tenantSlug || tenantSlug.trim().length < 2) {
+    if (!IS_WHITE_LABEL && (!tenantSlug || tenantSlug.trim().length < 2)) {
       setError('Masukkan kode pesantren yang valid.');
       return;
     }
@@ -108,8 +111,8 @@ export function LoginScreen() {
     loginInFlightRef.current = true;
     setIsLoading(true);
     try {
-      const slug = tenantSlug.trim().toLowerCase();
-      await storage.setTenantSlug(slug);
+      const slug = IS_WHITE_LABEL ? (BUILD_BRAND.tenantSlug || '') : tenantSlug.trim().toLowerCase();
+      if (!IS_WHITE_LABEL) await storage.setTenantSlug(slug);
       const { anak } = await login(nomorHp, pin, slug);
 
       await setActiveSantri(anak[0]);
@@ -180,7 +183,7 @@ export function LoginScreen() {
               </View>
             ) : null}
 
-            <LoginField label="Kode Pesantren">
+            {!IS_WHITE_LABEL ? <LoginField label="Kode Pesantren">
               <TextInput
                 style={styles.input}
                 placeholder="Contoh: default"
@@ -194,7 +197,7 @@ export function LoginScreen() {
                 autoCorrect={false}
                 accessibilityLabel="Kode pesantren"
               />
-            </LoginField>
+            </LoginField> : null}
 
             <LoginField label="Nomor HP">
               <TextInput

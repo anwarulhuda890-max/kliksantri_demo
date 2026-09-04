@@ -1,7 +1,7 @@
 {
-  "name": "KlikPesantren",
-  "short_name": "KlikPesantren",
-  "description": "Platform administrasi pesantren modern.",
+  "name": "KhodimulMa'had — Powered by KlikPesantren",
+  "short_name": "KhodimulMa'had",
+  "description": "Admin PWA pesantren, didukung KlikPesantren.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

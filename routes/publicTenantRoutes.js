@@ -6,6 +6,7 @@ const {
 
 const router = express.Router();
 const { resolveActiveTenantByHostname } = require("../services/customTenantDomainService");
+const { getTenantProfile } = require("../services/appBrandProfileService");
 
 router.get("/resolve-domain/by-hostname", async (req, res) => {
   try {
@@ -35,14 +36,25 @@ router.get("/:slug/profile", async (req, res) => {
     }
 
     const serviceAvailable = tenant.status === "active";
+    let buildBrand = null;
+    try {
+      buildBrand = await getTenantProfile(tenant.id);
+    } catch (error) {
+      if (error.code !== "42P01") throw error;
+    }
+    const whiteLabel = buildBrand?.mode === "white_label" && ["APPROVED", "BUILD_READY", "PUBLISHED"].includes(buildBrand.status)
+      ? buildBrand
+      : null;
 
     res.json({
       success: true,
       data: {
         slug: tenant.slug,
-        nama: tenant.nama,
-        logo_url: tenant.logo_url || null,
-        tagline: tenant.tagline || null,
+        nama: whiteLabel?.app_name || tenant.nama,
+        logo_url: whiteLabel?.logo_url || tenant.logo_url || null,
+        tagline: whiteLabel?.slogan || tenant.tagline || null,
+        primary_color: whiteLabel?.primary_color || null,
+        powered_by_klikpesantren: true,
         alamat: tenant.alamat || null,
         telepon: tenant.telepon || null,
         status: tenant.status,

@@ -37,6 +37,8 @@
     "test:cash-dashboard-reconciliation": "node scripts/test-cash-dashboard-reconciliation.js",
     "test:branding-domain": "node scripts/test-branding-domain-contract.js",
     "migration:086:production": "node scripts/run-migration-086-production.js"
+    ,"test:white-label": "node scripts/test-white-label-foundation.js",
+    "migration:087:production": "node scripts/run-migration-087-production.js"
   },
   "keywords": [],
   "author": "",

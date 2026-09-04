@@ -11,6 +11,7 @@ import {
   registerPushTokenBackground,
   unregisterPushToken,
 } from '../services/pushNotificationService';
+import { BUILD_BRAND } from '../config/buildBrand';
 
 const AuthContext = createContext(null);
 
@@ -167,7 +168,7 @@ export function AuthProvider({ children }) {
   }, [registerPushAfterAuthReady]);
 
   const login = useCallback(async (nomor_hp, pin, tenant_slug) => {
-    const res = await authApi.login(nomor_hp, pin, tenant_slug);
+    const res = await authApi.login(nomor_hp, pin, tenant_slug, BUILD_BRAND.brandKey);
 
     const {
       token,

@@ -1,13 +1,21 @@
+import { BUILD_BRAND } from '../config/buildBrand';
+
+function mix(hex, target, amount) {
+  const source = hex.slice(1).match(/.{2}/g).map((part) => parseInt(part, 16));
+  const destination = target.slice(1).match(/.{2}/g).map((part) => parseInt(part, 16));
+  return `#${source.map((value, index) => Math.round(value + (destination[index] - value) * amount).toString(16).padStart(2, '0')).join('')}`;
+}
+
 /**
  * Wali App V2 — Brand Palette
  * Aligns with KlikPesantren Admin Design System V3
  */
 export const colors = {
   // Brand core
-  primary: '#15803D',
-  primaryHover: '#166534',
-  primaryDark: '#166534',
-  primarySoft: '#DCFCE7',
+  primary: BUILD_BRAND.primaryColor,
+  primaryHover: mix(BUILD_BRAND.primaryColor, '#000000', 0.14),
+  primaryDark: mix(BUILD_BRAND.primaryColor, '#000000', 0.2),
+  primarySoft: mix(BUILD_BRAND.primaryColor, '#FFFFFF', 0.85),
 
   navy: '#0F172A',
   navySoft: '#1E293B',

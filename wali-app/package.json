@@ -36,6 +36,8 @@
     "export:android": "expo export --platform android",
     "build:apk": "eas build --platform android --profile preview",
     "build:aab:production": "eas build --platform android --profile production",
+    "build:android": "node ./scripts/build-android-brand.js",
+    "brand:config": "node ./scripts/build-android-brand.js --config-only",
     "eas-build-pre-install": "node ./scripts/write-eas-env.js"
   },
   "private": true,

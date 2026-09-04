@@ -50,6 +50,12 @@ const platformAuthRoutes =
 const platformTenantRoutes =
   require("./routes/platformTenantRoutes");
 
+const platformBrandRoutes =
+  require("./routes/platformBrandRoutes");
+
+const publicBrandRoutes =
+  require("./routes/publicBrandRoutes");
+
 const platformTenantDomainRoutes =
   require("./routes/platformTenantDomainRoutes");
 
@@ -330,6 +336,11 @@ app.use(
 );
 
 app.use(
+  "/platform/brands",
+  platformBrandRoutes
+);
+
+app.use(
   "/platform",
   platformTenantDomainRoutes
 );
@@ -367,6 +378,11 @@ app.use(
 app.use(
   "/public/platform",
   publicPlatformRoutes
+);
+
+app.use(
+  "/public/app-brands",
+  publicBrandRoutes
 );
 
 app.use(

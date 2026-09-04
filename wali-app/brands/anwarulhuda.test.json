@@ -1,0 +1,22 @@
+{
+  "brand_key": "anwarulhuda",
+  "tenant_id": 1,
+  "tenant_slug": "anwarulhuda313",
+  "mode": "white_label",
+  "app_name": "Wali Anwarul Huda",
+  "short_name": "Wali AH",
+  "slogan": "Membersamai pendidikan dengan amanah",
+  "primary_color": "#7C3AED",
+  "package_id": "com.klikpesantren.anwarulhuda.wali",
+  "logo": "./assets/android-icon-foreground.png",
+  "icon": "./assets/android-icon-foreground.png",
+  "splash_logo": "./assets/android-icon-foreground.png",
+  "adaptive_foreground": "./assets/android-icon-foreground.png",
+  "adaptive_background": "./assets/android-icon-background.png",
+  "adaptive_monochrome": "./assets/android-icon-monochrome.png",
+  "current_version_name": "1.0.0",
+  "current_version_code": 1,
+  "status": "BUILD_READY",
+  "firebase_config_ref": "firebase/android/com.klikpesantren.anwarulhuda.wali/google-services.json",
+  "asset_note": "Existing placeholder asset for resolver smoke only; final foundation logo must be supplied before publication."
+}
