@@ -3,11 +3,11 @@ const path = require('node:path');
 
 const UNIVERSAL = Object.freeze({
   brand_key: 'universal', mode: 'universal', app_name: 'WaliSantri', short_name: 'WaliSantri',
-  slogan: 'Portal wali santri, didukung KlikPesantren', primary_color: '#15803D',
+  slogan: 'Portal wali santri, didukung KlikPesantren', primary_color: '#078A46',
   package_id: 'com.klikpesantren.wali', tenant_id: null, tenant_slug: null,
-  logo: './assets/icon.png', icon: './assets/icon.png', splash_logo: './assets/splash-icon.png',
-  adaptive_foreground: './assets/android-icon-foreground.png', adaptive_background: './assets/android-icon-background.png',
-  adaptive_monochrome: './assets/android-icon-monochrome.png', current_version_name: '1.0.0', current_version_code: 7,
+  logo: './assets/universal-walisantri-icon-1024.png', icon: './assets/universal-walisantri-icon-1024.png', splash_logo: './assets/universal-walisantri-icon-1024.png',
+  adaptive_foreground: './assets/universal-walisantri-icon-1024.png', adaptive_background: './assets/universal-walisantri-icon-1024.png',
+  adaptive_monochrome: './assets/android-icon-monochrome.png', current_version_name: '1.0.0', current_version_code: 8,
   status: 'BUILD_READY', powered_by_klikpesantren: true,
 });
 

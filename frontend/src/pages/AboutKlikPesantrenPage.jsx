@@ -3,6 +3,7 @@ import AppShell from "../layouts/AppShell";
 import Card from "../components/ui/Card";
 import { fetchPublicPlatformSettings } from "../services/platformPublicApi";
 import { resolveMediaUrl } from "../utils/mediaUrl";
+import { ADMIN_PRODUCT_BRAND, isUniversalAdminHost } from "../constants/adminProductBrand";
 
 function AboutKlikPesantrenPage() {
   const [settings, setSettings] = useState(null);
@@ -33,6 +34,17 @@ function AboutKlikPesantrenPage() {
   return (
     <AppShell title="Tentang KlikPesantren" breadcrumb="Tentang KlikPesantren">
       <Card padding="md" shadow="card" radius="xl">
+        {isUniversalAdminHost() ? (
+          <div style={productHeaderStyle}>
+            <img src={ADMIN_PRODUCT_BRAND.logo} alt="" style={productLogoStyle} />
+            <div>
+              <h1 style={titleStyle}>{ADMIN_PRODUCT_BRAND.name}</h1>
+              <p style={taglineStyle}>{ADMIN_PRODUCT_BRAND.tagline}</p>
+              <p style={poweredByStyle}>{ADMIN_PRODUCT_BRAND.poweredBy}</p>
+            </div>
+          </div>
+        ) : null}
+
         {loading ? (
           <p style={mutedStyle}>Memuat...</p>
         ) : error ? (
@@ -106,6 +118,29 @@ function AboutKlikPesantrenPage() {
     </AppShell>
   );
 }
+
+const productHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 16,
+  marginBottom: 24,
+  paddingBottom: 20,
+  borderBottom: "1px solid var(--border)",
+};
+
+const productLogoStyle = {
+  width: 72,
+  height: 72,
+  borderRadius: 18,
+  objectFit: "cover",
+};
+
+const poweredByStyle = {
+  margin: "6px 0 0",
+  color: "var(--text-secondary)",
+  fontSize: "12px",
+  fontWeight: 600,
+};
 
 const headerStyle = {
   display: "flex",

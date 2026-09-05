@@ -25,11 +25,7 @@ import { colors } from '../../constants/colors';
 import { interaction, radius, spacing } from '../../constants/theme';
 import { storage } from '../../utils/storage';
 import { TENANT_INACTIVE_MESSAGE } from '../../constants/tenant';
-import {
-  resolveBrandingName,
-  resolveBrandingTagline,
-  resolveLoginLogoUrl,
-} from '../../utils/branding';
+
 import { BUILD_BRAND, IS_WHITE_LABEL } from '../../config/buildBrand';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
@@ -62,23 +58,21 @@ export function LoginScreen() {
   const [showPin, setShowPin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [branding, setBranding] = useState(null);
 
   const pinRef = useRef(null);
   const loginInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!IS_WHITE_LABEL) {
-      storage.getPesantrenBranding().then(setBranding).catch(() => {});
       storage.getTenantSlug().then((slug) => {
         if (slug) setTenantSlug(slug);
       }).catch(() => {});
     }
   }, []);
 
-  const namaPesantren = IS_WHITE_LABEL ? BUILD_BRAND.appName : (branding ? resolveBrandingName(branding) : BUILD_BRAND.appName);
-  const tagline = IS_WHITE_LABEL ? BUILD_BRAND.slogan : (branding ? resolveBrandingTagline(branding, BUILD_BRAND.slogan || DEFAULT_TAGLINE) : BUILD_BRAND.slogan);
-  const loginLogo = IS_WHITE_LABEL ? BUILD_BRAND.logoUrl : resolveLoginLogoUrl(branding);
+  const namaPesantren = BUILD_BRAND.appName;
+  const tagline = BUILD_BRAND.slogan || DEFAULT_TAGLINE;
+  const loginLogo = BUILD_BRAND.logoUrl;
 
   function handlePhoneChange(text) {
     setNomorHp(text.replace(/[^0-9]/g, ''));

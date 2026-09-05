@@ -18,6 +18,7 @@ import { hasFeature } from "../utils/hasFeature";
 import { PERMISSIONS_UPDATED_EVENT } from "../utils/storage";
 import TenantBrand from "./TenantBrand";
 import { useTenantProfile } from "../context/TenantProfileContext";
+import { ADMIN_PRODUCT_BRAND, isUniversalAdminHost } from "../constants/adminProductBrand";
 
 const SCROLL_KEY = "kliksantri_sidebar_scroll";
 const COLLAPSE_KEY = "kliksantri_sidebar_collapsed";
@@ -510,8 +511,15 @@ function Sidebar({ drawerOpen = false, onDrawerClose }) {
           <FaSignOutAlt /> <span className="sidebar-logout-text">Logout</span>
         </button>
 
+        {isUniversalAdminHost() ? (
+          <Link to="/about" style={adminProductStyle} className="sidebar-admin-product">
+            <img src={ADMIN_PRODUCT_BRAND.logo} alt="" style={adminProductLogoStyle} />
+            <span>{ADMIN_PRODUCT_BRAND.name}</span>
+          </Link>
+        ) : null}
+
         <Link to="/about" style={platformMarkWrapStyle} className="sidebar-platform">
-          Powered by KlikPesantren
+          {ADMIN_PRODUCT_BRAND.poweredBy}
         </Link>
       </div>
     </div>
@@ -655,6 +663,24 @@ const logoutStyle = {
   fontWeight: 600,
   fontSize: "14px",
   transition: "background 180ms ease, color 180ms ease",
+};
+
+const adminProductStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "var(--space-2)",
+  color: SIDEBAR.text,
+  fontSize: "12px",
+  fontWeight: 700,
+  textDecoration: "none",
+};
+
+const adminProductLogoStyle = {
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  objectFit: "cover",
+  flexShrink: 0,
 };
 
 const platformMarkWrapStyle = {

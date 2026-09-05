@@ -17,8 +17,8 @@ module.exports = ({ config }) => {
     ? `data:image/png;base64,${fs.readFileSync(logoPath).toString('base64')}`
     : null;
   const splashPlugin = ['expo-splash-screen', {
-    backgroundColor: '#FFFFFF', image: process.env.BRAND_SPLASH_ASSET || brand.splash_logo, imageWidth: 220, resizeMode: 'contain',
-    dark: { backgroundColor: '#0F172A', image: process.env.BRAND_SPLASH_ASSET || brand.splash_logo },
+    backgroundColor: brand.primary_color, image: process.env.BRAND_SPLASH_ASSET || brand.splash_logo, imageWidth: 220, resizeMode: 'contain',
+    dark: { backgroundColor: brand.primary_color, image: process.env.BRAND_SPLASH_ASSET || brand.splash_logo },
   }];
   const plugins = (config.plugins || []).map((plugin) => {
     const name = Array.isArray(plugin) ? plugin[0] : plugin;

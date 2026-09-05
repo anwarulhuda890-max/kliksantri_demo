@@ -4,33 +4,17 @@ import { BrandLogo } from '../../components/branding/BrandLogo';
 import { colors } from '../../constants/colors';
 import { spacing } from '../../constants/theme';
 import { AppText } from '../../components/ui/AppText';
-import { storage } from '../../utils/storage';
-import {
-  resolveBrandingName,
-  resolveSplashLogoUrl,
-} from '../../utils/branding';
-import { BUILD_BRAND, IS_WHITE_LABEL } from '../../config/buildBrand';
+import { BUILD_BRAND } from '../../config/buildBrand';
 
 export function SplashScreen() {
-  const [branding, setBranding] = useState(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (IS_WHITE_LABEL) {
-      setReady(true);
-      return;
-    }
-    storage
-      .getPesantrenBranding()
-      .then((cached) => {
-        setBranding(cached);
-      })
-      .catch(() => {})
-      .finally(() => setReady(true));
+    setReady(true);
   }, []);
 
-  const displayName = IS_WHITE_LABEL ? BUILD_BRAND.appName : (branding ? resolveBrandingName(branding) : BUILD_BRAND.appName);
-  const splashLogo = IS_WHITE_LABEL ? BUILD_BRAND.logoUrl : resolveSplashLogoUrl(branding);
+  const displayName = BUILD_BRAND.appName;
+  const splashLogo = BUILD_BRAND.logoUrl;
 
   return (
     <View style={styles.container}>

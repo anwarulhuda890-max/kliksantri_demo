@@ -6,16 +6,16 @@
     "version": "1.0.0",
     "scheme": "klikpesantren-wali",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/universal-walisantri-icon-1024.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FFFFFF",
     "plugins": [
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FFFFFF",
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 200
+          "backgroundColor": "#078A46",
+          "image": "./assets/universal-walisantri-icon-1024.png",
+          "imageWidth": 220
         }
       ],
       [
@@ -56,7 +56,7 @@
     "android": {
       "package": "com.klikpesantren.wali",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 7,
+      "versionCode": 8,
       "predictiveBackGestureEnabled": true,
       "permissions": [
         "android.permission.INTERNET",
@@ -75,9 +75,9 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
+        "backgroundColor": "#078A46",
+        "foregroundImage": "./assets/universal-walisantri-icon-1024.png",
+        "backgroundImage": "./assets/universal-walisantri-icon-1024.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       }
     },

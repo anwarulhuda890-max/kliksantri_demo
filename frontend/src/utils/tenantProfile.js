@@ -1,3 +1,5 @@
+import { ADMIN_PRODUCT_BRAND } from "../constants/adminProductBrand";
+
 export const TENANT_CACHE_KEY = "kliksantri_tenant_profile";
 export const LAST_TENANT_SLUG_KEY = "last_tenant_slug";
 
@@ -8,10 +10,10 @@ export const TENANT_FALLBACKS = {
 };
 
 export const KLIKPESANTREN_LOGIN_BRANDING = {
-  name: "KhodimulMa'had",
-  address: "Admin Pesantren",
-  tagline: "Powered by KlikPesantren",
-  logo: null,
+  name: ADMIN_PRODUCT_BRAND.name,
+  address: ADMIN_PRODUCT_BRAND.tagline,
+  tagline: ADMIN_PRODUCT_BRAND.poweredBy,
+  logo: ADMIN_PRODUCT_BRAND.logo,
 };
 
 export function normalizeTenantProfile(profile) {
