@@ -7,7 +7,7 @@ const UNIVERSAL = Object.freeze({
   package_id: 'com.klikpesantren.wali', tenant_id: null, tenant_slug: null,
   logo: './assets/universal-walisantri-icon-1024.png', icon: './assets/universal-walisantri-icon-1024.png', splash_logo: './assets/universal-walisantri-icon-1024.png',
   adaptive_foreground: './assets/universal-walisantri-icon-1024.png', adaptive_background: './assets/universal-walisantri-icon-1024.png',
-  adaptive_monochrome: './assets/android-icon-monochrome.png', current_version_name: '1.0.0', current_version_code: 8,
+  adaptive_monochrome: './assets/android-icon-monochrome.png', current_version_name: '1.0.0', current_version_code: 9,
   status: 'BUILD_READY', powered_by_klikpesantren: true,
 });
 
