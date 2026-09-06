@@ -35,6 +35,7 @@ function PerizinanPage() {
   const [search, setSearch] = useState("");
   const [editId, setEditId] = useState(null);
   const [santri, setSantri] = useState([]);
+  const [santriLookupError, setSantriLookupError] = useState("");
   const [form, setForm] = useState({
     santri_id: "",
     tanggal: "",
@@ -57,11 +58,14 @@ function PerizinanPage() {
   };
 
   const getSantri = async () => {
+    setSantri([]);
+    setSantriLookupError("");
     try {
-      const response = await api.get("/santri", { params: readScopeParams });
+      const response = await api.get("/perizinan/student-lookup", { params: readScopeParams });
       setSantri(response.data.data || []);
     } catch (err) {
       console.error(err);
+      setSantriLookupError(err.response?.data?.error || "Gagal memuat daftar santri untuk Perizinan.");
     }
   };
 
@@ -133,6 +137,9 @@ function PerizinanPage() {
 
   useEffect(() => {
     getPerizinan();
+    setSantri([]);
+    setSantriLookupError("");
+    setForm((current) => ({ ...current, santri_id: "" }));
     getSantri();
   }, [readScopeParams]);
 
@@ -164,6 +171,7 @@ function PerizinanPage() {
             <FormField label="Santri" htmlFor="izin-santri" required>
               <SearchableSantriSelect
                 id="izin-santri"
+                error={santriLookupError}
                 santri={santri}
                 value={form.santri_id}
                 onChange={(santriId) => setForm({ ...form, santri_id: santriId })}

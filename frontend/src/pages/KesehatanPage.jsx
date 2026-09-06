@@ -23,7 +23,7 @@ import {
   FormGrid,
   FormActionBar,
 } from "../components/ui/form";
-import { getUser } from "../utils/storage";
+import { hasPermission } from "../utils/hasPermission";
 import { useActiveUnit } from "../context/ActiveUnitContext";
 import { buildUnitScopeParams, requireActiveUnitForWrite } from "../utils/unitScopeParams";
 
@@ -44,8 +44,7 @@ const PENANGANAN_OPTIONS = [
 ];
 
 function canManageUser() {
-  const role = getUser()?.role;
-  return role === "superadmin" || role === "keamanan";
+  return hasPermission("kesehatan.manage");
 }
 
 function formatDt(dt) {
@@ -79,6 +78,7 @@ function KesehatanPage() {
   const [pageSize] = useState(20);
   const [loading, setLoading] = useState(false);
   const [santri, setSantri] = useState([]);
+  const [santriLookupError, setSantriLookupError] = useState("");
   const [form, setForm] = useState(FORM_INIT);
 
   const getList = useCallback(async () => {
@@ -99,11 +99,14 @@ function KesehatanPage() {
   }, [page, pageSize, readScopeParams, search, statusFilter]);
 
   const getSantri = async () => {
+    setSantri([]);
+    setSantriLookupError("");
     try {
-      const res = await api.get("/santri", { params: readScopeParams });
-      setSantri(res.data.data || []);
+      const response = await api.get("/kesehatan/student-lookup", { params: readScopeParams });
+      setSantri(response.data.data || []);
     } catch (err) {
       console.error(err);
+      setSantriLookupError(err.response?.data?.error || "Gagal memuat daftar santri untuk Kesehatan.");
     }
   };
 
@@ -154,6 +157,9 @@ function KesehatanPage() {
   };
 
   useEffect(() => {
+    setSantri([]);
+    setSantriLookupError("");
+    setForm((current) => ({ ...current, santri_id: "" }));
     getSantri();
   }, [readScopeParams]);
 
@@ -184,6 +190,7 @@ function KesehatanPage() {
               <FormField label="Santri" htmlFor="kes-santri" required>
                 <SearchableSantriSelect
                   id="kes-santri"
+                  error={santriLookupError}
                   santri={santri}
                   value={form.santri_id}
                   onChange={(santriId) => setForm({ ...form, santri_id: santriId })}

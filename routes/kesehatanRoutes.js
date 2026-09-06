@@ -1,5 +1,7 @@
 const express = require("express");
 const pool = require("../db");
+const requirePermission = require("../middleware/requirePermission");
+const { listOperationalStudents } = require("../services/operationalStudentLookupService");
 const {
   assertSantriInTenant,
   assertRecordInTenant,
@@ -14,6 +16,19 @@ const {
 const notificationService = require("../services/notificationService");
 
 const router = express.Router();
+
+router.get(
+  "/student-lookup",
+  requirePermission.requireAnyPermission(["kesehatan.manage"]),
+  async (req, res) => {
+    try {
+      const { rows, access } = await listOperationalStudents(req);
+      res.json({ success: true, data: rows, access: accessResponse(access) });
+    } catch (err) {
+      sendUnitError(res, err, "Gagal memuat lookup santri kesehatan");
+    }
+  },
+);
 
 const STATUS_KESEHATAN = new Set(["sehat", "sakit"]);
 const STATUS_PENANGANAN = new Set([

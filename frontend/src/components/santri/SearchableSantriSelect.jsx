@@ -23,6 +23,7 @@ function SearchableSantriSelect({
   santri = [],
   onChange,
   placeholder = "Cari nama santri...",
+  error = "",
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -114,7 +115,9 @@ function SearchableSantriSelect({
               </button>
             ))
           ) : (
-            <div className="santri-search-select__empty">Santri tidak ditemukan</div>
+            <div className="santri-search-select__empty" role={error ? "alert" : undefined}>
+              {error || "Santri tidak ditemukan"}
+            </div>
           )}
         </div>
       ) : null}

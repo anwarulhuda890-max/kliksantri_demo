@@ -1,6 +1,9 @@
 const express = require("express");
 const router = express.Router();
+
 const pool = require("../db");
+const requirePermission = require("../middleware/requirePermission");
+const { listOperationalStudents } = require("../services/operationalStudentLookupService");
 const {
   assertSantriInTenant,
   assertRecordInTenant,
@@ -16,6 +19,19 @@ const notificationService =
   require("../services/notificationService");
 
 console.log("PELANGGARAN ROUTES LOADED");
+
+router.get(
+  "/student-lookup",
+  requirePermission.requireAnyPermission(["pelanggaran.create", "pelanggaran.update"]),
+  async (req, res) => {
+    try {
+      const { rows, access } = await listOperationalStudents(req);
+      res.json({ success: true, data: rows, access: accessResponse(access) });
+    } catch (err) {
+      sendUnitError(res, err, "Gagal memuat lookup santri pelanggaran");
+    }
+  },
+);
 
 router.get("/", async (req, res) => {
   try {

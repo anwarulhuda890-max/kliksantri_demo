@@ -48,6 +48,7 @@ function PelanggaranPage() {
   const [editId, setEditId] = useState(null);
   const [search, setSearch] = useState("");
   const [santri, setSantri] = useState([]);
+  const [santriLookupError, setSantriLookupError] = useState("");
   const [form, setForm] = useState(FORM_INIT);
 
   const getPelanggaran = async () => {
@@ -60,11 +61,14 @@ function PelanggaranPage() {
   };
 
   const getSantri = async () => {
+    setSantri([]);
+    setSantriLookupError("");
     try {
-      const response = await api.get("/santri", { params: readScopeParams });
+      const response = await api.get("/pelanggaran/student-lookup", { params: readScopeParams });
       setSantri(response.data.data || []);
     } catch (err) {
       console.error(err);
+      setSantriLookupError(err.response?.data?.error || "Gagal memuat daftar santri untuk Pelanggaran.");
     }
   };
 
@@ -119,6 +123,9 @@ function PelanggaranPage() {
 
   useEffect(() => {
     getPelanggaran();
+    setSantri([]);
+    setSantriLookupError("");
+    setForm((current) => ({ ...current, santri_id: "" }));
     getSantri();
   }, [readScopeParams]);
 
@@ -151,6 +158,7 @@ function PelanggaranPage() {
             <FormField label="Santri" htmlFor="pel-santri" required>
               <SearchableSantriSelect
                 id="pel-santri"
+                error={santriLookupError}
                 santri={santri}
                 value={form.santri_id}
                 onChange={(santriId) => setForm({ ...form, santri_id: santriId })}
