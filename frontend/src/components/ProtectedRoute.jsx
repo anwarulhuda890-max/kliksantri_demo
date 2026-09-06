@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import api from "../services/api";
-import { ROUTE_PERMISSIONS, ROUTE_FEATURES } from "../constants/permissions";
+import { ROUTE_PERMISSIONS, ROUTE_FEATURES, ROUTE_UNIT_FEATURES } from "../constants/permissions";
+import { useActiveUnit } from "../context/ActiveUnitContext";
 import { hasAnyPermission } from "../utils/hasPermission";
 import { hasFeature } from "../utils/hasFeature";
 import { clearSession, getUser, setUser } from "../utils/storage";
@@ -27,6 +28,7 @@ function ProtectedRoute({ children }) {
   const token = localStorage.getItem("token");
   const user = getUser();
   const location = useLocation();
+  const { activeUnitId, featureLoading, featureReady, hasActiveUnitFeature } = useActiveUnit();
   const hostnameRoute = getCurrentHostnameRoute();
   const tenantHostnameMismatch = Boolean(
     token &&
@@ -146,6 +148,19 @@ function ProtectedRoute({ children }) {
         </p>
       </div>
     );
+  }
+
+  const requiredUnitFeature = ROUTE_UNIT_FEATURES[location.pathname];
+  if (requiredUnitFeature && activeUnitId && (featureLoading || !featureReady)) {
+    return (
+      <div style={{ height: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }}>
+        Memuat fitur unit...
+      </div>
+    );
+  }
+
+  if (requiredUnitFeature && !hasActiveUnitFeature(requiredUnitFeature)) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;

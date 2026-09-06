@@ -1,12 +1,27 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
+const requirePermission = require("../middleware/requirePermission");
 const {
   getActiveStudentContext,
   getMapelByNameInUnit,
+  listActiveStudentsInClass,
   resolveAcademicUnit,
   sendAcademicError,
 } = require("../services/academicUnitService");
+
+router.get("/students", async (req, res) => {
+  try {
+    const access = await resolveAcademicUnit(req);
+    if (access.mode === "ALL") {
+      return res.status(400).json({ success: false, error: "Pilih unit terlebih dahulu", code: "UNIT_REQUIRED" });
+    }
+    const rows = await listActiveStudentsInClass(req.tenantId, req.query.kelas_id, access.unitId);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    sendAcademicError(res, err);
+  }
+});
 
 router.get("/", async (req, res) => {
   try {
@@ -43,7 +58,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requirePermission("nilai.manage"), async (req, res) => {
   try {
     const { santri_id, tanggal, mapel, nilai, bulan, tahun } = req.body;
 

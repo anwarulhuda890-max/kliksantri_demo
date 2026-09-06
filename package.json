@@ -40,6 +40,7 @@
     "test:white-label": "node scripts/test-white-label-foundation.js",
     "migration:087:production": "node scripts/run-migration-087-production.js",
     "test:tenant-system-role-overrides": "node scripts/test-tenant-system-role-overrides.js",
+    "test:academic-multi-unit": "node scripts/test-academic-multi-unit.js",
     "migration:088:production": "node scripts/run-migration-088-production.js"
   },
   "keywords": [],

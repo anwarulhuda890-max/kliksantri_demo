@@ -95,6 +95,40 @@ async function getClassInUnit(tenantId, kelasId, unitId, client = pool) {
   return rows[0];
 }
 
+async function listActiveStudentsInClass(tenantId, kelasId, unitId, client = pool) {
+  const parsedClassId = Number(kelasId);
+  if (!Number.isInteger(parsedClassId) || parsedClassId <= 0) {
+    throw academicError("Kelas wajib dipilih", 400, "CLASS_REQUIRED");
+  }
+
+  await getClassInUnit(tenantId, parsedClassId, unitId, client);
+  const { rows } = await client.query(
+    `SELECT DISTINCT ON (s.id)
+            s.id, s.nama, s.nis,
+            su.id AS santri_unit_id,
+            ske.id AS enrollment_id,
+            ske.kelas_id
+     FROM santri_kelas_enrollments ske
+     JOIN santri_units su
+       ON su.id = ske.santri_unit_id
+      AND su.tenant_id = ske.tenant_id
+      AND su.unit_id = $3
+      AND su.status = 'active'
+      AND su.left_at IS NULL
+     JOIN santri s
+       ON s.id = su.santri_id
+      AND s.tenant_id = su.tenant_id
+     WHERE ske.tenant_id = $1
+       AND ske.kelas_id = $2
+       AND ske.status = 'active'
+       AND ske.end_date IS NULL
+       AND LOWER(TRIM(COALESCE(s.status, 'aktif'))) IN ('aktif','active','')
+     ORDER BY s.id, ske.id DESC`,
+    [tenantId, parsedClassId, unitId],
+  );
+  return rows;
+}
+
 async function getMapelInUnit(tenantId, mapelId, unitId, client = pool) {
   const { rows } = await client.query(
     `SELECT id, tenant_id, unit_id, nama, aktif
@@ -191,6 +225,7 @@ module.exports = {
   getAttendanceSessionInUnit,
   getClassInUnit,
   getGuruInUnit,
+  listActiveStudentsInClass,
   getMapelByNameInUnit,
   getMapelInUnit,
   resolveAcademicUnit,

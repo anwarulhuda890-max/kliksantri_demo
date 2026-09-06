@@ -47,6 +47,12 @@ export const ROUTE_PERMISSIONS = {
 };
 
 // Map: path frontend → tenant feature key
+export const ROUTE_UNIT_FEATURES = {
+  "/hafalan": "hafalan",
+  "/nilai": "nilai",
+  "/mata-pelajaran": "mata_pelajaran",
+};
+
 export const ROUTE_FEATURES = {
   "/dashboard":         "dashboard",
   "/santri":            "santri",

@@ -19,6 +19,7 @@ import { PERMISSIONS_UPDATED_EVENT } from "../utils/storage";
 import TenantBrand from "./TenantBrand";
 import { useTenantProfile } from "../context/TenantProfileContext";
 import { ADMIN_PRODUCT_BRAND, isUniversalAdminHost } from "../constants/adminProductBrand";
+import { useActiveUnit } from "../context/ActiveUnitContext";
 
 const SCROLL_KEY = "kliksantri_sidebar_scroll";
 const COLLAPSE_KEY = "kliksantri_sidebar_collapsed";
@@ -46,9 +47,9 @@ const MENU = [
   { name: "Profil Pesantren", path: "/profil-pesantren", perm: "profil.view", feature: "profil", icon: <FaSchool /> },
   { name: "Pengumuman", path: "/pengumuman", perm: "pengumuman.view", feature: "pengumuman", icon: <FaClipboardList /> },
   { name: "Konten Pesantren", path: "/wali-home-links", perm: "konten_pesantren.view", feature: "pengumuman", icon: <FaClipboardList /> },
-  { name: "Nilai", path: "/nilai", perm: "nilai.view", feature: "pendidikan", icon: <FaClipboardList /> },
-  { name: "Mata Pelajaran", path: "/mata-pelajaran", perm: "nilai.view", feature: "pendidikan", icon: <FaClipboardList /> },
-  { name: "Hafalan", path: "/hafalan", perm: "hafalan.view", feature: "pendidikan", icon: <FaClipboardList /> },
+  { name: "Nilai", path: "/nilai", perm: "nilai.view", feature: "pendidikan", unitFeature: "nilai", icon: <FaClipboardList /> },
+  { name: "Mata Pelajaran", path: "/mata-pelajaran", perm: "nilai.view", feature: "pendidikan", unitFeature: "mata_pelajaran", icon: <FaClipboardList /> },
+  { name: "Hafalan", path: "/hafalan", perm: "hafalan.view", feature: "pendidikan", unitFeature: "hafalan", icon: <FaClipboardList /> },
   { name: "Program Unit", path: "/program-unit", perm: "program_unit.view", feature: "program_unit", icon: <FaClipboardList /> },
   { name: "Absensi", path: "/absensi", perm: "absensi.view", feature: "pendidikan", icon: <FaClipboardList /> },
   { name: "Absensi Guru", path: "/absensi-guru", perm: "absensi_guru.view", feature: "pendidikan", icon: <FaClipboardList /> },
@@ -277,6 +278,7 @@ function SidebarBrand() {
 
 function Sidebar({ drawerOpen = false, onDrawerClose }) {
   const location = useLocation();
+  const { hasActiveUnitFeature } = useActiveUnit();
   const navRef = useRef(null);
   const scrollRafRef = useRef(null);
 
@@ -296,9 +298,9 @@ function Sidebar({ drawerOpen = false, onDrawerClose }) {
   const menus = useMemo(
     () => {
       void permissionsVersion;
-      return MENU.filter((m) => hasAnyPermission(m.perm) && hasFeature(m.feature));
+      return MENU.filter((m) => hasAnyPermission(m.perm) && hasFeature(m.feature) && hasActiveUnitFeature(m.unitFeature));
     },
-    [permissionsVersion],
+    [permissionsVersion, hasActiveUnitFeature],
   );
 
   const menuByName = useMemo(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "../services/api";
 import AppShell from "../layouts/AppShell";
 import Card from "../components/ui/Card";
@@ -59,6 +59,9 @@ function NilaiPage() {
   const [bulan, setBulan] = useState(new Date().getMonth() + 1);
   const [tahun, setTahun] = useState(new Date().getFullYear());
   const [santri, setSantri] = useState([]);
+  const [santriLoading, setSantriLoading] = useState(false);
+  const [santriError, setSantriError] = useState("");
+  const studentRequestId = useRef(0);
   const [nilai, setNilai] = useState({});
   const [mapelList, setMapelList] = useState([]);
 
@@ -103,20 +106,40 @@ function NilaiPage() {
   };
 
   const getSantri = async (id) => {
+    const requestId = ++studentRequestId.current;
+    setSantri([]);
+    setSantriError("");
+    if (!id) {
+      setSantriLoading(false);
+      return;
+    }
+
     try {
-      const response = await api.get("/santri", { params: scopeParams });
-      const filtered = response.data.data.filter(
-        (s) => String(s.kelas_id) === String(id)
-      );
-      setSantri(filtered);
+      setSantriLoading(true);
+      const response = await api.get("/nilai/students", {
+        params: { ...scopeParams, kelas_id: id },
+      });
+      if (studentRequestId.current === requestId) {
+        setSantri(response.data.data || []);
+      }
     } catch (err) {
       console.error(err);
+      if (studentRequestId.current === requestId) {
+        setSantriError(err.response?.data?.error || "Gagal memuat santri kelas");
+      }
+    } finally {
+      if (studentRequestId.current === requestId) {
+        setSantriLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    studentRequestId.current += 1;
     setKelasId("");
     setSantri([]);
+    setSantriLoading(false);
+    setSantriError("");
     setMapelList([]);
     getKelas();
   }, [activeUnitId, allUnitsAllowed]);
@@ -251,11 +274,19 @@ function NilaiPage() {
             description="Pilih kelas, bulan, dan tahun untuk mengisi nilai santri."
           />
         </div>
+      ) : santriLoading ? (
+        <div className="ops-page__empty">
+          <EmptyState title="Memuat santri kelas" description="Menyiapkan daftar enrollment aktif..." />
+        </div>
+      ) : santriError ? (
+        <div className="ops-page__empty">
+          <EmptyState title="Gagal memuat santri kelas" description={santriError} />
+        </div>
       ) : santri.length === 0 ? (
         <div className="ops-page__empty">
           <EmptyState
             title="Belum ada santri di kelas ini"
-            description="Tidak ada santri terdaftar pada kelas yang dipilih."
+            description="Tidak ada enrollment santri aktif pada kelas yang dipilih."
           />
         </div>
       ) : (

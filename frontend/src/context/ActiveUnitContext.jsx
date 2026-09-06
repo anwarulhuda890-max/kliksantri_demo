@@ -16,6 +16,7 @@ export function ActiveUnitProvider({ children }) {
   const [allUnitsAllowed, setAllUnitsAllowed] = useState(false);
   const [activeUnitId, setActiveUnitIdState] = useState(null);
   const [activeUnitFeatures, setActiveUnitFeatures] = useState([]);
+  const [featureUnitId, setFeatureUnitId] = useState(null);
   const [featureLoading, setFeatureLoading] = useState(false);
   const [featureError, setFeatureError] = useState("");
   const [loading, setLoading] = useState(Boolean(localStorage.getItem("token")));
@@ -27,6 +28,7 @@ export function ActiveUnitProvider({ children }) {
       setAllUnitsAllowed(false);
       setActiveUnitIdState(null);
       setActiveUnitFeatures([]);
+      setFeatureUnitId(null);
       setFeatureError("");
       setError("");
       setLoading(false);
@@ -64,6 +66,7 @@ export function ActiveUnitProvider({ children }) {
       setAllUnitsAllowed(false);
       setActiveUnitIdState(null);
       setActiveUnitFeatures([]);
+      setFeatureUnitId(null);
       setFeatureError("");
       setError(requestError.response?.data?.error || "Ruang kerja unit belum dapat dimuat");
     } finally {
@@ -82,6 +85,7 @@ export function ActiveUnitProvider({ children }) {
 
     async function loadActiveUnitFeatures() {
       setActiveUnitFeatures([]);
+      setFeatureUnitId(null);
       setFeatureError("");
       if (!activeUnitId) {
         setFeatureLoading(false);
@@ -92,10 +96,14 @@ export function ActiveUnitProvider({ children }) {
         setFeatureLoading(true);
         setFeatureError("");
         const response = await api.get(`/units/${activeUnitId}/features`);
-        if (!cancelled) setActiveUnitFeatures(response.data?.data || []);
+        if (!cancelled) {
+          setActiveUnitFeatures(response.data?.data || []);
+          setFeatureUnitId(Number(activeUnitId));
+        }
       } catch (requestError) {
         if (!cancelled) {
           setActiveUnitFeatures([]);
+          setFeatureUnitId(Number(activeUnitId));
           setFeatureError(requestError.response?.data?.error || "Fitur unit belum dapat dimuat");
         }
       } finally {
@@ -113,6 +121,7 @@ export function ActiveUnitProvider({ children }) {
   const setActiveUnitId = useCallback((value) => {
     const normalized = value == null || value === "all" || value === "" ? null : Number(value);
     setActiveUnitFeatures([]);
+    setFeatureUnitId(null);
     setFeatureError("");
     setFeatureLoading(normalized != null);
     if (normalized == null && !allUnitsAllowed) {
@@ -136,8 +145,11 @@ export function ActiveUnitProvider({ children }) {
     if (!featureKey) return true;
     if (!activeUnitId) return allUnitsAllowed;
     const feature = activeUnitFeatures.find((item) => item.key === featureKey);
-    return feature?.effective_enabled === true || feature?.enabled === true;
+    return feature?.effective_enabled === true;
   }, [activeUnitFeatures, activeUnitId, allUnitsAllowed]);
+
+  const featureReady =
+    activeUnitId == null || Number(featureUnitId) === Number(activeUnitId);
 
   const value = useMemo(() => ({
     units,
@@ -145,6 +157,7 @@ export function ActiveUnitProvider({ children }) {
     activeUnit: units.find((unit) => Number(unit.id) === Number(activeUnitId)) || null,
     activeUnitFeatures,
     featureLoading,
+    featureReady,
     featureError,
     hasActiveUnitFeature,
     allUnitsAllowed,
@@ -157,6 +170,7 @@ export function ActiveUnitProvider({ children }) {
     activeUnitId,
     activeUnitFeatures,
     featureLoading,
+    featureReady,
     featureError,
     hasActiveUnitFeature,
     allUnitsAllowed,
