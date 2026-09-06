@@ -108,6 +108,7 @@ router.post("/login", async (req, res) => {
 
     const permissions = await requirePermission.getPermissionList(user.role, {
       tenantScoped: true,
+      tenantId: user.tenant_id,
     });
 
     res.json({
@@ -171,6 +172,7 @@ router.get("/me", authMiddleware, async (req, res) => {
 
     const permissions = await requirePermission.getPermissionList(me.role, {
       tenantScoped: Boolean(me.tenant_id),
+      tenantId: me.tenant_id,
     });
 
     const tenant_features = me.tenant_id

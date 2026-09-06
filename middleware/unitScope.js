@@ -28,6 +28,7 @@ async function resolveUnitAccess(req) {
 
   const perms = await requirePermission.getPermissionList(role, {
     tenantScoped: true,
+    tenantId,
   });
   const canView = perms.includes("kas_instansi.view");
   const canManage = perms.includes("kas_instansi.manage");

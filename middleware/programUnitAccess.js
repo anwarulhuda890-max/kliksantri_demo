@@ -26,7 +26,7 @@ async function resolveProgramUnitAccess(req) {
     };
   }
 
-  const perms = await requirePermission.getPermissionList(role);
+  const perms = await requirePermission.getPermissionList(role, { tenantScoped: true, tenantId });
   const canView = perms.includes("program_unit.view");
   const canManage = perms.includes("program_unit.manage");
 

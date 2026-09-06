@@ -27,6 +27,7 @@ function RolesPage() {
   const [matrixModal, setMatrixModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
   const [checked, setChecked]         = useState(new Set());
+  const [roleLabel, setRoleLabel]       = useState("");
   const [savingMatrix, setSavingMatrix] = useState(false);
 
   const [addModal, setAddModal]       = useState(false);
@@ -86,6 +87,7 @@ function RolesPage() {
       const keys = data.permissions || [];
       setSelectedRole({ ...role, ...data });
       setChecked(new Set(keys));
+      setRoleLabel(data.label || role.label || role.name || "");
       setMatrixModal(true);
     } catch (err) {
       setError(err.response?.data?.error || "Gagal memuat permission role");
@@ -117,6 +119,7 @@ function RolesPage() {
     try {
       await api.put(`/roles/${selectedRole.id}/permissions`, {
         permissions: [...checked],
+        label: roleLabel.trim(),
       });
       setMatrixModal(false);
       flash(`Permission role "${selectedRole.label || selectedRole.name}" diperbarui`);
@@ -277,11 +280,24 @@ function RolesPage() {
         onClose={() => setMatrixModal(false)}
         width={720}
       >
+        <FormGrid columns="modal">
+          <FormField label="Nama Internal" htmlFor="role-internal-name">
+            <Input id="role-internal-name" value={selectedRole?.name || ""} disabled readOnly />
+          </FormField>
+          <FormField label="Label Tampilan" htmlFor="role-display-label" required>
+            <Input
+              id="role-display-label"
+              value={roleLabel}
+              onChange={(event) => setRoleLabel(event.target.value)}
+              disabled={rbacReadOnly || !selectedRole?.can_manage}
+            />
+          </FormField>
+        </FormGrid>
         <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: "13px" }}>
-          {checked.size} permission dipilih
-          {!selectedRole?.can_manage
-            ? " - role sistem hanya bisa dilihat. Buat role custom untuk matrix khusus."
-            : ""}
+          {selectedRole?.is_system
+            ? `Role Sistem · identitas internal dan tipe terkunci · ${selectedRole?.permission_source === "tenant_override" ? "override tenant aktif" : "menggunakan fallback global"}`
+            : "Role custom tenant"}
+          {` · ${checked.size} permission dipilih`}
         </p>
 
         <div style={{ maxHeight: "55vh", overflowY: "auto", paddingRight: "4px" }}>

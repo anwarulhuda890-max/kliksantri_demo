@@ -15,7 +15,7 @@ router.get("/summary", async (req, res) => {
     if (access.mode !== "UNIT") {
       throw accessError("Pilih unit terlebih dahulu", 400, "UNIT_REQUIRED");
     }
-    const permissions = await requirePermission.getPermissionList(req.user.role, { tenantScoped: true });
+    const permissions = await requirePermission.getPermissionList(req.user.role, { tenantScoped: true, tenantId: req.tenantId });
     const data = await getDashboardSpecificUnit(pool, {
       tenantId: req.tenantId,
       unitId: access.unitId,

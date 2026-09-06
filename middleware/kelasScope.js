@@ -17,6 +17,7 @@ async function resolveKelasScopeAccess(req) {
 
   const perms = await requirePermission.getPermissionList(role, {
     tenantScoped: true,
+    tenantId,
   });
   const canView = perms.includes("absensi.view");
   const canManage =

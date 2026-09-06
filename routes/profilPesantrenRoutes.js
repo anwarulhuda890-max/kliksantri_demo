@@ -32,9 +32,9 @@ function pickSafeDisplayProfile(row) {
   };
 }
 
-async function canReadFullProfile(role) {
+async function canReadFullProfile(role, tenantId) {
   if (!role) return false;
-  const permissions = await requirePermission.getPermissionList(role, { tenantScoped: true });
+  const permissions = await requirePermission.getPermissionList(role, { tenantScoped: true, tenantId });
   return permissions.includes("profil.view") || permissions.includes("profil.manage");
 }
 
@@ -75,7 +75,7 @@ router.get("/", async (req, res) => {
       [tenantId]
     );
 
-    const fullProfileAllowed = await canReadFullProfile(req.user?.role);
+    const fullProfileAllowed = await canReadFullProfile(req.user?.role, tenantId);
 
     res.json({
       success: true,

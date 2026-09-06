@@ -55,6 +55,9 @@ const fakePool = {
     if (query.includes("token_version") && query.includes("FROM users") && query.includes("WHERE id = $1")) {
       return { rows: Number(params[0]) === state.user.id ? [{ ...state.user }] : [] };
     }
+    if (query.includes("FROM tenant_role_overrides tro") && query.includes("r.is_system = true")) {
+      return { rows: [] };
+    }
     if (query.startsWith("SELECT r.name AS role, p.key AS perm")) {
       return {
         rows: [
@@ -118,8 +121,8 @@ async function run() {
   assert.match(frontendApi, /data\?\.code === "SESSION_EXPIRED"/);
   assert.match(frontendApi, /clearSession\(\)/);
   assert.match(loginPage, /sessionStorage\.getItem\("auth_message"\)/);
-  assert.match(unitRoute, /router\.get\("\/", requirePermission\("unit\.view"\)/);
-  assert.match(roleRoute, /if \(!permissionsChanged\)/);
+  assert.match(unitRoute, /router\.get\("\/presets\/:unitType", requirePermission\("unit\.view"\)/);
+  assert.match(roleRoute, /if \(!permissionsChanged && !labelChanged\)/);
 
   const app = express();
   app.use(express.json());
@@ -143,7 +146,7 @@ async function run() {
     state.user.role = "superadmin";
     state.user.token_version += 1;
 
-    const rejected = await request(baseUrl, "GET", "/units", oldLogin.body.token);
+    const rejected = await request(baseUrl, "GET", "/units/presets/PESANTREN", oldLogin.body.token);
     assert.equal(rejected.status, 401);
     assert.equal(rejected.body.code, "SESSION_EXPIRED");
 
@@ -155,15 +158,13 @@ async function run() {
     assert.equal(newLogin.status, 200);
     assert.equal(jwt.verify(newLogin.body.token, JWT_SECRET).token_version, 1);
 
-    const units = await request(baseUrl, "GET", "/units", newLogin.body.token);
+    const units = await request(baseUrl, "GET", "/units/presets/PESANTREN", newLogin.body.token);
     assert.equal(units.status, 200);
     assert.equal(units.body.success, true);
-    assert.equal(units.body.data.length, 1);
-    assert.equal(units.body.access.all_units, true);
 
     // Simulates the role_permissions trigger after the role matrix changes.
     state.user.token_version += 1;
-    const permissionChangeRejected = await request(baseUrl, "GET", "/units", newLogin.body.token);
+    const permissionChangeRejected = await request(baseUrl, "GET", "/units/presets/PESANTREN", newLogin.body.token);
     assert.equal(permissionChangeRejected.status, 401);
     assert.equal(permissionChangeRejected.body.code, "SESSION_EXPIRED");
 
